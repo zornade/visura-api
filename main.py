@@ -14,6 +14,7 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from contextlib import asynccontextmanager
 from utils import login, run_visura, logout, extract_all_sezioni, run_visura_immobile, PageLogger
 from pydantic import BaseModel, Field, validator
+from auth import login
 
 # Carica variabili d'ambiente da .env
 load_dotenv()

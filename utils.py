@@ -5,7 +5,40 @@ import os
 import re
 from datetime import datetime
 
-PAGES_LOG_DIR = "./logs/pages"
+DEFAULT_PAGES_LOG_DIR = "./logs/pages"
+
+
+def _ensure_writable_dir(path: str) -> bool:
+    """Crea e verifica che una directory sia scrivibile."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe_path = os.path.join(path, ".write_probe")
+        with open(probe_path, "w", encoding="utf-8") as probe:
+            probe.write("ok")
+        os.remove(probe_path)
+        return True
+    except (PermissionError, OSError):
+        return False
+
+
+def _resolve_pages_log_dir() -> str | None:
+    """Risolve una directory scrivibile per i log pagina.
+
+    Priorita:
+    1) variabile env PAGES_LOG_DIR (o default ./logs/pages)
+    2) fallback /tmp/visura-api/logs/pages nel container
+    """
+    preferred_dir = os.getenv("PAGES_LOG_DIR", DEFAULT_PAGES_LOG_DIR)
+    if _ensure_writable_dir(preferred_dir):
+        return preferred_dir
+
+    fallback_dir = "/tmp/visura-api/logs/pages"
+    if _ensure_writable_dir(fallback_dir):
+        print(f"[PAGE_LOG] Directory '{preferred_dir}' non scrivibile, uso fallback '{fallback_dir}'")
+        return fallback_dir
+
+    print(f"[PAGE_LOG] Nessuna directory scrivibile disponibile (provate: '{preferred_dir}', '{fallback_dir}'). Logging pagine disabilitato.")
+    return None
 
 
 def parse_table(html):
@@ -36,6 +69,7 @@ class PageLogger:
 
     _session_id: str = None
     _flow_counters: dict = {}
+    _pages_log_dir: str | None = None
 
     @classmethod
     def reset_session(cls):
@@ -47,21 +81,33 @@ class PageLogger:
         if PageLogger._session_id is None:
             PageLogger._session_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+        if PageLogger._pages_log_dir is None:
+            PageLogger._pages_log_dir = _resolve_pages_log_dir()
+
         # Contatore per differenziare flussi ripetuti (visura_002, visura_003…)
         count = PageLogger._flow_counters.get(flow_name, 0) + 1
         PageLogger._flow_counters[flow_name] = count
 
         self.flow_name = flow_name
         self.step = 0
+        self.enabled = PageLogger._pages_log_dir is not None
 
         dir_name = flow_name if count == 1 else f"{flow_name}_{count:03d}"
-        self.base_dir = os.path.join(PAGES_LOG_DIR, PageLogger._session_id, dir_name)
-        os.makedirs(self.base_dir, exist_ok=True)
+        self.base_dir = (
+            os.path.join(PageLogger._pages_log_dir, PageLogger._session_id, dir_name)
+            if self.enabled
+            else None
+        )
+
+        if self.enabled:
+            os.makedirs(self.base_dir, exist_ok=True)
 
     async def log(self, page: Page, step_name: str) -> None:
         """Salva l'HTML corrente della pagina su disco."""
         self.step += 1
         try:
+            if not self.enabled or not self.base_dir:
+                return
             if not page or page.is_closed():
                 print(f"[PAGE_LOG] {self.flow_name}/{step_name}: pagina chiusa, skip")
                 return
