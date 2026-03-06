@@ -8,7 +8,7 @@ Partecipando a questo progetto accetti di rispettare il nostro [Codice di Condot
 
 ## Come segnalare un problema
 
-1. Controlla prima le [issue esistenti](https://github.com/menimenocchio/visura-api/issues) per assicurarti che il problema non sia già stato segnalato
+1. Controlla prima le [issue esistenti](https://github.com/zornade/visura-api/issues) per assicurarti che il problema non sia già stato segnalato
 2. Se è un problema di sicurezza, **NON** aprire una issue pubblica — segui le istruzioni in [SECURITY.md](SECURITY.md)
 3. Apri una nuova issue usando il template appropriato, fornendo:
    - Descrizione chiara del problema
@@ -23,7 +23,7 @@ Partecipando a questo progetto accetti di rispettare il nostro [Codice di Condot
 
 ```bash
 # Clona il repository
-git clone https://github.com/menimenocchio/visura-api.git
+git clone https://github.com/zornade/visura-api.git
 cd visura-api
 
 # Crea un ambiente virtuale
@@ -100,6 +100,6 @@ Usiamo il formato [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## Domande?
 
-Apri una [discussione](https://github.com/menimenocchio/visura-api/discussions) o una issue con l'etichetta `domanda`.
+Apri una [discussione](https://github.com/zornade/visura-api/discussions) o una issue con l'etichetta `domanda`.
 
 Grazie per il tuo contributo!

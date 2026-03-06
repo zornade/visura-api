@@ -6,7 +6,7 @@ Se trovi una vulnerabilità di sicurezza in Visura API, **NON** aprire una issue
 
 Invece, segnalala in modo responsabile tramite uno dei seguenti canali:
 
-1. **GitHub Security Advisory**: usa la funzione [Segnala una vulnerabilità](https://github.com/menimenocchio/visura-api/security/advisories/new) direttamente su GitHub
+1. **GitHub Security Advisory**: usa la funzione [Segnala una vulnerabilità](https://github.com/zornade/visura-api/security/advisories/new) direttamente su GitHub
 2. **Email**: contatta i manutentori tramite il profilo GitHub
 
 ### Cosa includere nella segnalazione
