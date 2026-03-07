@@ -8,6 +8,11 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 ## [Non rilasciato]
 
 ### Aggiunto
+- **Refactoring Autenticazione (`auth/`)**:
+  - Introdotto supporto provider SPID multipli.
+  - Implementazione modulare per i provider `SIELTE` e `CIE`.
+  - Configurazione provider tramite variabile `AUTH_PROVIDER`.
+  - Nuova variabile d'ambiente `2FA_TIMEOUT_SECONDS` per la gestione del timeout notifiche 2FA.
 - Licenza GPL v3
 - File CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md
 - Configurazione CI con GitHub Actions
@@ -32,4 +37,7 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 - Rimosse dipendenze `sqlalchemy` e `psycopg[binary]`
 
 ### Corretto
+- Miglioramenti al logging ed error handling. 
+- Corretto bug di session recovery aggiornando l'URL standardizzato `sister3.agenziaentrate.gov.it`.
+- Ripristinata l'integrità del blocco `lifespan` in `main.py` per l'avvio della coda e del `BrowserManager`.
 - Rimosso `sys.exit(0)` duplicato nel gestore dei segnali

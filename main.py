@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from contextlib import asynccontextmanager
-from utils import login, run_visura, logout, extract_all_sezioni, run_visura_immobile, PageLogger
+from utils import PageLogger, login, run_visura, logout, extract_all_sezioni, run_visura_immobile
 from pydantic import BaseModel, Field, validator
 
 # Carica variabili d'ambiente da .env
@@ -112,8 +112,8 @@ class BrowserManager:
     async def initialize(self):
         """Inizializza il browser e il contexto"""
         try:
-            playwright = await async_playwright().start()
-            self.browser = await playwright.chromium.launch(
+            self.playwright = await async_playwright().start()
+            self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 handle_sigint=False,   # Non chiudere Chromium su Ctrl+C — gestiamo noi il logout
                 handle_sigterm=False,  # Idem per SIGTERM
@@ -139,15 +139,25 @@ class BrowserManager:
         """Esegue il login nella prima tab"""
         try:
             # Chiudi la vecchia pagina prima di crearne una nuova
-            if self.auth_page and not self.auth_page.is_closed():
+            if self.auth_page and getattr(self.auth_page, 'is_closed', lambda: True)() is False:
                 try:
                     await self.auth_page.close()
                     logger.info("Vecchia pagina di autenticazione chiusa")
                 except Exception as e:
                     logger.warning(f"Errore chiudendo vecchia pagina: {e}")
             
-            page = await self.context.new_page()
-            await login(page)
+            for attempt in range(2):
+                try:
+                    page = await self.context.new_page()
+                    await login(page)
+                    break
+                except Exception as e:
+                    if ("Target page, context or browser has been closed" in str(e) or 
+                        "Browser closed" in str(e) or "Target closed" in str(e)) and attempt == 0:
+                        logger.warning(f"Contesto chiuso ({e}), reinizializzazione in corso... (tentativo {attempt+1})")
+                        await self.initialize()
+                    else:
+                        raise
             self.auth_page = page
             self.authenticated = True
             self.last_login_time = datetime.now()
