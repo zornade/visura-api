@@ -51,7 +51,7 @@ class SielteAuthProvider(BaseAuthProvider):
         submit_btn = page.get_by_role("button", name="Procedi")
         if await submit_btn.count() == 0:
             submit_btn = page.locator("button[type='submit']")
-        
+
         if page_logger:
             await page_logger.log(page, "before_submit")
         await submit_btn.click()
@@ -72,7 +72,7 @@ class SielteAuthProvider(BaseAuthProvider):
                 await page.locator("text='Autorizza con l\\'App'").click(timeout=4000)
         except PlaywrightTimeoutError:
             print("[LOGIN_SIELTE] Nessun link notifica trovato o già autorizzato.")
-        
+
         if page_logger:
             await page_logger.log(page, "after_notification_step")
 
