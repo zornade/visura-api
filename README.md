@@ -104,6 +104,7 @@ Client HTTP
 |------|-------------|
 | `main.py` | Applicazione FastAPI: endpoint, modelli Pydantic, `BrowserManager`, `VisuraService`, lifespan |
 | `utils.py` | Automazione browser: `login()`, `logout()`, `run_visura()`, `run_visura_immobile()`, `extract_all_sezioni()`, `PageLogger`, `parse_table()` |
+| `auth/` | Package contenente le strategie di autenticazione (CIE, Sielte) |
 | `Dockerfile` | Immagine basata su `python:3.11-slim` con dipendenze per Chromium |
 | `docker-compose.yaml` | Orchestrazione con healthcheck, volumi per log, restart automatico |
 | `requirements.txt` | Dipendenze Python |
@@ -111,10 +112,18 @@ Client HTTP
 
 ---
 
+## Compatibilità Autenticazione
+
+> **Importante**: attualmente il login automatizzato supporta due flussi, configurabili tramite la variabile d'ambiente `AUTH_PROVIDER`:
+> - **CIE**: Utilizza la Carta d'Identità Elettronica e conferma tramite app mobile CieID.
+> - **SIELTE** (default): Utilizza lo SPID provider Sielte con push notification.
+> 
+> Se utilizzi un altro provider SPID, dovrai espandere i provider implementando una nuova strategia all'interno della cartella `auth/`.
+
 ## Prerequisiti
 
 - **Python 3.11+** (testato fino a 3.13)
-- **Credenziali SPID** tramite provider Sielte ID con app MySielteID configurata
+- **Credenziali SPID/CIE**
 - **Convenzione SISTER attiva** — l'utente deve avere un account abilitato sul portale SISTER
 
 Per Docker:
@@ -177,15 +186,26 @@ Crea un file `.env` nella root del progetto (vedi `.env.example`):
 ADE_USERNAME=RSSMRA85M01H501Z    # Codice fiscale
 ADE_PASSWORD=la_tua_password
 
-# Opzionale
-LOG_LEVEL=INFO                    # DEBUG | INFO | WARNING | ERROR
+# === Configurazione opzionale ===
+
+# Provider di Autenticazione: CIE o SIELTE (default)
+AUTH_PROVIDER=CIE
+
+# Tempo di attesa massimo (in secondi) per l'approvazione del login 2FA su smartphone
+2FA_TIMEOUT_SECONDS=90
+
+# Livello di log: DEBUG, INFO, WARNING, ERROR
+LOG_LEVEL=INFO
+
 ```
 
 | Variabile | Obbligatoria | Default | Descrizione |
 |-----------|:------------:|---------|-------------|
 | `ADE_USERNAME` | ✅ | — | Codice fiscale per il login SPID |
-| `ADE_PASSWORD` | ✅ | — | Password SPID (Sielte ID) |
+| `ADE_PASSWORD` | ✅ | — | Password SPID |
 | `LOG_LEVEL` | | `INFO` | Livello di log su console e file |
+| `AUTH_PROVIDER` | | `SIELTE` | Provider di autenticazione (`CIE` o `SIELTE`) |
+| `2FA_TIMEOUT_SECONDS` |  | `90` | Timeout in secondi per l'approvazione del login 2FA |
 
 ---
 
@@ -719,6 +739,65 @@ Leggi [CONTRIBUTING.md](CONTRIBUTING.md) per il dettaglio completo. In breve:
 | Log HTML vuoti o mancanti | Errore durante il salvataggio | Controlla i permessi sulla directory `logs/pages/` |
 
 Per debug approfondito, ispeziona i file HTML in `logs/pages/` — mostrano esattamente cosa vedeva il browser in ogni step.
+
+### Gestione Errore "Utente già in sessione"
+
+Il messaggio **"Utente già in sessione"** su SISTER indica che una sessione precedente non è stata chiusa correttamente (es. chiusura del browser senza logout). Questo impedisce l'accesso immediato.
+
+**Soluzioni:**
+- **Attesa automatica**: Il portale solitamente sblocca l'utenza dopo circa 30 minuti di inattività.
+- **Logout forzato**: Se possibile, rientrare manualmente ed effettuare l'uscita cliccando su **"Esci"**.
+- **Pulizia locale**: Cancellare cookie e cache del browser.
+- **Prevenzione**: Assicurarsi di spegnere il servizio API tramite l'endpoint `/shutdown` o inviando un segnale `SIGTERM`, permettendo al sistema di eseguire il logout automatico.
+
+
+## Sviluppo e contribuzione
+
+### Setup ambiente di sviluppo
+```bash
+git clone https://github.com/zornade/visura-api.git
+cd visura-api
+
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
+playwright install chromium
+
+cp .env.example .env
+# Configura le credenziali
+```
+
+### Struttura del codice
+- **`main.py`**: Contiene la logica API (FastAPI), la gestione della coda (`VisuraService`) e il ciclo di vita del browser (`BrowserManager`).
+- **`utils.py`**: Contiene `PageLogger`, le funzioni di navigazione core di SISTER e i parser delle tabelle.
+- **`auth/`**: Package per le strategie di autenticazione. Ogni provider (CIE, Sielte) implementa l'interfaccia `BaseAuthProvider`.
+
+### Convenzioni per il logging HTML
+Quando aggiungi nuovi flussi o step, usa `PageLogger`:
+
+```python
+logger = PageLogger("nome_flusso")    # Crea logger per questo flusso
+await logger.log(page, "nome_step")   # Salva HTML della pagina corrente
+```
+
+### Test
+```bash
+# Esegui tutti i test (richiede pytest)
+python -m pytest auth/tests/test_*.py
+
+# Test manuale PageLogger
+PYTHONPATH=. ./.venv/bin/python3 auth/tests/test_pagelogger.py
+```
+
+### Formattazione e linting
+```bash
+black .           # formattazione automatica
+ruff check .      # controllo linting
+```
+
+## Contribuire
+
 
 ---
 
