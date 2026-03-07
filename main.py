@@ -112,6 +112,12 @@ class BrowserManager:
     async def initialize(self):
         """Inizializza il browser e il contexto"""
         try:
+            if getattr(self, "playwright", None):
+                try:
+                    await self.playwright.stop()
+                except Exception:
+                    pass
+                    
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
@@ -124,7 +130,6 @@ class BrowserManager:
                     '--disable-gpu',
                     '--no-first-run',
                     '--no-zygote',
-                    '--single-process',
                     '--disable-extensions'
                 ]
             )

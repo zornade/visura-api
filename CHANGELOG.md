@@ -37,7 +37,8 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 - Rimosse dipendenze `sqlalchemy` e `psycopg[binary]`
 
 ### Corretto
-- Miglioramenti al logging ed error handling. 
+- Miglioramenti al logging ed error handling.
 - Corretto bug di session recovery aggiornando l'URL standardizzato `sister3.agenziaentrate.gov.it`.
 - Ripristinata l'integrità del blocco `lifespan` in `main.py` per l'avvio della coda e del `BrowserManager`.
-- Rimosso `sys.exit(0)` duplicato nel gestore dei segnali
+- Rimosso `sys.exit(0)` duplicato nel gestore dei segnali.
+- **Stabilità Docker**: aggiunta chiusura esplicita dell'istanza `playwright` precedente prima di reinizializzare il browser (`BrowserManager.initialize`), evitando processi Chromium orfani al riavvio del contesto. Rimosso flag `--single-process` incompatibile con ambienti Docker.
