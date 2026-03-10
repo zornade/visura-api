@@ -631,7 +631,9 @@ async def run_visura(
                                     if temp_intestati and len(temp_intestati) > 0:
                                         if "Foglio" not in intestati_html and "Particella" not in intestati_html:
                                             intestati = temp_intestati
-                                            print(f"[VISURA] Tabella Intestati estratta (fallback): {len(intestati)} righe")
+                                            print(
+                                                f"[VISURA] Tabella Intestati estratta (fallback): {len(intestati)} righe"
+                                            )
                                             break
                             except Exception as e:
                                 print(f"[DEBUG] Errore con tabella intestati {i}: {e}")
