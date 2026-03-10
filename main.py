@@ -72,7 +72,7 @@ class VisuraRequest:
     foglio: str
     particella: str
     sezione: Optional[str] = None
-    subalterno: Optional[str] = None
+    subalterno: Optional[str] = None  # Opzionale: restringe la ricerca per fabbricati
     timestamp: datetime = None
 
     def __post_init__(self):
@@ -356,14 +356,11 @@ class BrowserManager:
                 raise AuthenticationError(f"Re-authentication failed: {e}") from e
 
     async def esegui_visura(self, request: VisuraRequest) -> VisuraResponse:
-        """Esegue una visura catastale"""
+        """Esegue una visura catastale (solo dati catastali, senza intestati)"""
         try:
             await self._ensure_authenticated()
 
             try:
-                # Per i terreni estraiamo sempre gli intestati, per i fabbricati no
-                extract_intestati = request.tipo_catasto == "T"
-
                 result = await run_visura(
                     self.auth_page,
                     request.provincia,
@@ -372,7 +369,8 @@ class BrowserManager:
                     request.foglio,
                     request.particella,
                     request.tipo_catasto,
-                    extract_intestati,
+                    extract_intestati=False,
+                    subalterno=request.subalterno,
                 )
             except Exception as e:
                 raise BrowserError(f"Failed to execute visura: {e}") from e
@@ -620,13 +618,14 @@ app = FastAPI(title="Servizio Visure Catastali", lifespan=lifespan)
 
 
 class VisuraInput(BaseModel):
-    """Richiesta per una visura catastale"""
+    """Richiesta per una visura catastale (solo dati catastali, senza intestati)"""
 
     provincia: str = Field(..., min_length=1, description="Nome della provincia")
     comune: str = Field(..., min_length=1, description="Nome del comune")
     foglio: str = Field(..., min_length=1, description="Numero di foglio")
     particella: str = Field(..., min_length=1, description="Numero di particella")
     sezione: Optional[str] = Field(None, description="Sezione (opzionale)")
+    subalterno: Optional[str] = Field(None, description="Subalterno (opzionale, restringe la ricerca per fabbricati)")
     tipo_catasto: Optional[str] = Field(
         None, pattern=r"^[TF]$", description="'T' = Terreni, 'F' = Fabbricati (se omesso esegue entrambi)"
     )
@@ -698,6 +697,7 @@ async def richiedi_visura(request: VisuraInput, service: VisuraService = Depends
                 sezione=sezione,
                 foglio=request.foglio,
                 particella=request.particella,
+                subalterno=request.subalterno,
             )
             await service.add_request(visura_req)
             request_ids.append(request_id)

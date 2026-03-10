@@ -269,12 +269,14 @@ async def run_visura(
     particella="166",
     tipo_catasto="T",
     extract_intestati=True,
+    subalterno=None,
 ):
     time0 = time.time()
     logger = PageLogger("visura")
     sezione_info = f", sezione={sezione}" if sezione else ", sezione=None"
+    subalterno_info = f", subalterno={subalterno}" if subalterno else ""
     print(
-        f"[VISURA] Inizio visura: provincia={provincia}, comune={comune}{sezione_info}, foglio={foglio}, particella={particella}, tipo_catasto={tipo_catasto}"
+        f"[VISURA] Inizio visura: provincia={provincia}, comune={comune}{sezione_info}, foglio={foglio}, particella={particella}{subalterno_info}, tipo_catasto={tipo_catasto}"
     )
 
     # Non creare una nuova pagina, usa quella esistente
@@ -449,6 +451,12 @@ async def run_visura(
     await page.locator("input[name='particella1']").fill(str(particella))
     print("[VISURA] Particella inserita")
 
+    # Inserisci subalterno (opzionale, restringe la ricerca per fabbricati)
+    if subalterno:
+        print(f"[VISURA] Inserendo subalterno: {subalterno}")
+        await page.locator("input[name='subalterno1']").fill(str(subalterno))
+        print("[VISURA] Subalterno inserito")
+
     # Clicca Ricerca
     print("[VISURA] Cliccando Ricerca...")
     await page.locator("input[name='scelta'][value='Ricerca']").click()
@@ -538,327 +546,120 @@ async def run_visura(
         print(f"[VISURA] Errore estrazione immobili: {e}")
         immobili = []
 
-    # STEP 5: Gestisci risultati multipli iterando su ogni radio button
-    print("[VISURA] Cercando radio button per risultati multipli...")
+    # Se non servono intestati, la tabella immobili è tutto ciò che serve
+    if not extract_intestati:
+        time1 = time.time()
+        print(f"[VISURA] Visura completata con successo in {time1-time0:.2f} secondi")
+        print(f"[VISURA] {len(immobili)} immobili estratti dalla tabella")
+        return {
+            "immobili": immobili,
+            "results": [],
+            "total_results": len(immobili),
+            "intestati": [],
+        }
 
-    # Array per raccogliere tutti i risultati
-    all_results = []
+    # STEP 5: Estrai intestati (solo quando extract_intestati=True)
+    # Usato da /visura/intestati per terreni — tipicamente 1-2 risultati
+    print("[VISURA] Estraendo intestati...")
+    intestati = []
 
     try:
-        # Trova tutti i radio button per la selezione degli immobili
-        radio_buttons = page.locator("input[type='radio'][property='visImmSel'], input[type='radio'][name='visImmSel']")
-        radio_count = await radio_buttons.count()
-        print(f"[VISURA] Trovati {radio_count} radio button per selezione immobili")
+        # Try multiple selectors for the Intestati button
+        intestati_button_selectors = [
+            "input[name='intestati'][value='Intestati']",
+            "input[value='Intestati']",
+            "input[name='intestati']",
+            "button:has-text('Intestati')",
+            "input[type='submit'][value*='ntestat']",
+            "*[value='Intestati']",
+        ]
 
-        if radio_count == 0:
-            print("[VISURA] Nessun radio button trovato, provo direttamente con Intestati")
-            # Se non ci sono radio button, procedi direttamente
-            radio_count = 1
-
-        # Itera attraverso ogni risultato
-        for result_index in range(radio_count):
-            print(f"[VISURA] Processando risultato {result_index + 1}/{radio_count}")
-
-            # Controlla se questo immobile è "Soppressa" prima di processarlo
-            current_immobile_data = immobili[result_index] if result_index < len(immobili) else {}
-            partita = current_immobile_data.get("Partita", current_immobile_data.get("partita", ""))
-
-            if partita == "Soppressa":
-                print(f"[VISURA] Risultato {result_index + 1} ha partita 'Soppressa', saltando estrazione intestati")
-                # Aggiungi questo risultato alla lista senza intestati
-                result_data = {
-                    "result_index": result_index + 1,
-                    "immobile": current_immobile_data,
-                    "intestati": [],  # Nessun intestato per record soppressi
-                }
-                all_results.append(result_data)
-                print(f"[VISURA] Risultato {result_index + 1} completato (saltato per Soppressa)")
+        intestati_button = None
+        for selector in intestati_button_selectors:
+            try:
+                locator = page.locator(selector)
+                if await locator.count() > 0:
+                    intestati_button = locator.first
+                    print(f"[VISURA] Bottone Intestati trovato con selettore: {selector}")
+                    break
+            except Exception as e:
+                print(f"[VISURA] Selettore {selector} fallito: {e}")
                 continue
 
-            # Se ci sono radio button, seleziona quello corrente
-            if radio_count > 1 or await radio_buttons.count() > 0:
+        if intestati_button:
+            await intestati_button.click()
+            await page.wait_for_load_state("networkidle", timeout=30000)
+            print("[VISURA] Intestati cliccato")
+            await logger.log(page, "intestati")
+
+            # Estrai tabella Elenco Intestati
+            intestati_selectors = [
+                "table.listaIsp4",
+                "table[class*='lista']",
+                "table:has(th:text('Nominativo o denominazione'))",
+                "table:has(th:text('Codice fiscale'))",
+                "table:has(th:text('Titolarità'))",
+                "table:has(th:text('Cognome'))",
+                "table:has(th:text('Nome'))",
+                "table",
+            ]
+
+            for selector in intestati_selectors:
                 try:
-                    print(f"[VISURA] Selezionando radio button {result_index}")
-                    await radio_buttons.nth(result_index).click()
-                    await page.wait_for_timeout(1000)  # Breve pausa
-                    print(f"[VISURA] Radio button {result_index} selezionato")
-                except Exception as e:
-                    print(f"[VISURA] Errore nella selezione radio button {result_index}: {e}")
-                    continue
+                    intestati_table = page.locator(selector)
+                    count = await intestati_table.count()
 
-            # Inizializza lista intestati vuota
-            intestati = []
-
-            # Estrai intestati solo se richiesto
-            if extract_intestati:
-                # Clicca su "Intestati" per questo risultato
-                print(f"[VISURA] Cliccando Intestati per risultato {result_index + 1}...")
-                try:
-                    # Try multiple selectors for the Intestati button
-                    intestati_button_selectors = [
-                        "input[name='intestati'][value='Intestati']",
-                        "input[value='Intestati']",
-                        "input[name='intestati']",
-                        "button:has-text('Intestati')",
-                        "input[type='submit'][value*='ntestat']",  # Case insensitive partial match
-                        "input[type='button'][value*='ntestat']",
-                        "*[value='Intestati']",
-                        "a:has-text('Intestati')",
-                    ]
-
-                    intestati_button = None
-                    for selector in intestati_button_selectors:
-                        try:
-                            locator = page.locator(selector)
-                            if await locator.count() > 0:
-                                intestati_button = locator.first
-                                print(f"[VISURA] Bottone Intestati trovato con selettore: {selector}")
-                                break
-                        except Exception as e:
-                            print(f"[VISURA] Selettore {selector} fallito: {e}")
-                            continue
-
-                    if intestati_button:
-                        await intestati_button.click()
-                        await page.wait_for_load_state("networkidle", timeout=30000)
-                        print(f"[VISURA] Intestati cliccato per risultato {result_index + 1}")
-                        await logger.log(page, f"intestati_r{result_index + 1}")
-
-                        # Estrai tabella Elenco Intestati per questo risultato
-                        print(f"[VISURA] Estraendo tabella Elenco Intestati per risultato {result_index + 1}...")
-
-                        selectors = [
-                            "table.listaIsp4",  # Stessa classe delle tabelle
-                            "table[class*='lista']",  # Cerca tabelle con classe che contiene 'lista'
-                            "table:has(th:text('Cognome'))",  # Cerca tabella con header 'Cognome'
-                            "table:has(th:text('Nome'))",  # Cerca tabella con header 'Nome'
-                            "table:has(th:text('Nominativo o denominazione'))",  # Nuovo header specifico
-                            "table:has(th:text('Codice fiscale'))",  # Nuovo header specifico
-                            "table:has(th:text('Titolarità'))",  # Nuovo header specifico
-                            "table",  # Fallback: qualsiasi tabella
-                        ]
-
-                        for selector in selectors:
+                    if count > 0:
+                        for i in range(count):
                             try:
-                                print(f"[DEBUG] Tentativo selettore intestati: {selector}")
-                                intestati_table = page.locator(selector)
-                                count = await intestati_table.count()
-                                print(f"[DEBUG] Trovate {count} tabelle con selettore {selector}")
+                                table_elem = intestati_table.nth(i)
+                                intestati_html = await table_elem.inner_html(timeout=10000)
 
-                                if count > 0:
-                                    # Se ci sono più tabelle, proviamo a trovare quella giusta
-                                    for i in range(count):
-                                        try:
-                                            table_elem = intestati_table.nth(i)
-                                            intestati_html = await table_elem.inner_html(timeout=10000)
-
-                                            # Verifica se contiene le colonne che ci aspettiamo per gli intestati
-                                            if (
-                                                "Cognome" in intestati_html
-                                                or "Nome" in intestati_html
-                                                or "Soggetto" in intestati_html
-                                                or "Nominativo o denominazione" in intestati_html
-                                                or "Codice fiscale" in intestati_html
-                                                or "Titolarità" in intestati_html
-                                            ):
-                                                intestati = parse_table(intestati_html)
-                                                print(
-                                                    f"[VISURA] Tabella Intestati estratta per risultato {result_index + 1}: {len(intestati)} righe"
-                                                )
-                                                break
-                                            else:
-                                                # Proviamo comunque a parsare la tabella per vedere cosa contiene
-                                                temp_intestati = parse_table(intestati_html)
-                                                print(
-                                                    f"[DEBUG] Tabella {i} non contiene colonne intestati attese, ma contiene:"
-                                                )
-                                                print(
-                                                    f"[DEBUG] Headers trovati nella tabella: {list(temp_intestati[0].keys()) if temp_intestati else 'Nessun dato'}"
-                                                )
-
-                                                # Se la tabella ha dati e non è quella degli immobili, proviamo ad usarla
-                                                if temp_intestati and len(temp_intestati) > 0:
-                                                    # Verifica che non sia la tabella immobili (che contiene "Foglio")
-                                                    if (
-                                                        "Foglio" not in intestati_html
-                                                        and "Particella" not in intestati_html
-                                                    ):
-                                                        intestati = temp_intestati
-                                                        print(
-                                                            f"[VISURA] Tabella Intestati estratta (fallback) per risultato {result_index + 1}: {len(intestati)} righe"
-                                                        )
-                                                        break
-                                        except Exception as e:
-                                            print(f"[DEBUG] Errore con tabella intestati {i}: {e}")
-                                            continue
-
-                                    if intestati:
-                                        break
-
-                            except Exception as e:
-                                print(f"[DEBUG] Errore con selettore intestati {selector}: {e}")
-                                continue
-
-                        # Se ci sono altri risultati da processare, torna alla pagina precedente
-                        if result_index < radio_count - 1:
-                            print("[VISURA] Tornando indietro per processare il prossimo risultato...")
-                            try:
-                                # Cerca il bottone "Indietro"
-                                indietro_button = page.locator("input[name='indietro'][value='Indietro']")
-                                if await indietro_button.count() > 0:
-                                    await indietro_button.click()
-                                    await page.wait_for_load_state("networkidle", timeout=30000)
-                                    print(f"[VISURA] Tornato indietro, pronto per risultato {result_index + 2}")
-                                    await logger.log(page, f"indietro_r{result_index + 1}")
-                                else:
-                                    print("[VISURA] Bottone Indietro non trovato")
+                                if (
+                                    "Cognome" in intestati_html
+                                    or "Nome" in intestati_html
+                                    or "Soggetto" in intestati_html
+                                    or "Nominativo o denominazione" in intestati_html
+                                    or "Codice fiscale" in intestati_html
+                                    or "Titolarità" in intestati_html
+                                ):
+                                    intestati = parse_table(intestati_html)
+                                    print(f"[VISURA] Tabella Intestati estratta: {len(intestati)} righe")
                                     break
-                            except Exception as e:
-                                print(f"[VISURA] Errore nel tornare indietro: {e}")
-                                break
-
-                    else:
-                        print(f"[VISURA] Bottone Intestati non trovato per risultato {result_index + 1}")
-
-                except Exception as e:
-                    print(f"[VISURA] Errore estrazione intestati per risultato {result_index + 1}: {e}")
-            else:
-                print(
-                    f"[VISURA] Estrazione intestati saltata per risultato {result_index + 1} (extract_intestati=False)"
-                )
-
-            # Aggiungi questo risultato alla lista
-            result_data = {"result_index": result_index + 1, "immobile": current_immobile_data, "intestati": intestati}
-            all_results.append(result_data)
-            print(f"[VISURA] Risultato {result_index + 1} completato: {len(intestati)} intestati trovati")
-
-        print(f"[VISURA] Completato processing di {len(all_results)} risultati")
-
-    except Exception as e:
-        print(f"[VISURA] Errore generale nel processing risultati multipli: {e}")
-        # Fallback: se c'è un errore, prova il metodo originale
-        all_results = []
-
-    # Se non abbiamo risultati multipli, usa il metodo originale come fallback
-    if not all_results:
-        print("[VISURA] Nessun risultato multiplo trovato, usando metodo originale...")
-        intestati = []
-
-        # Estrai intestati solo se richiesto
-        if extract_intestati:
-            try:
-                # Try multiple selectors for the Intestati button
-                intestati_button_selectors = [
-                    "input[name='intestati'][value='Intestati']",
-                    "input[value='Intestati']",
-                    "input[name='intestati']",
-                    "button:has-text('Intestati')",
-                    "input[type='submit'][value*='ntestat']",  # Case insensitive partial match
-                    "input[type='button'][value*='ntestat']",
-                    "*[value='Intestati']",
-                    "a:has-text('Intestati')",
-                ]
-
-                intestati_button = None
-                for selector in intestati_button_selectors:
-                    try:
-                        locator = page.locator(selector)
-                        if await locator.count() > 0:
-                            intestati_button = locator.first
-                            print(f"[VISURA] Bottone Intestati trovato con selettore (fallback): {selector}")
-                            break
-                    except Exception as e:
-                        print(f"[VISURA] Selettore {selector} fallito (fallback): {e}")
-                        continue
-
-                if intestati_button:
-                    await intestati_button.click()
-                    await page.wait_for_load_state("networkidle", timeout=30000)
-                    print("[VISURA] Intestati cliccato (metodo originale)")
-                    await logger.log(page, "intestati_fallback")
-
-                    # Estrai tabella Elenco Intestati
-                    selectors = [
-                        "table.listaIsp4",
-                        "table[class*='lista']",
-                        "table:has(th:text('Cognome'))",
-                        "table:has(th:text('Nome'))",
-                        "table:has(th:text('Nominativo o denominazione'))",  # Nuovo header specifico
-                        "table:has(th:text('Codice fiscale'))",  # Nuovo header specifico
-                        "table:has(th:text('Titolarità'))",  # Nuovo header specifico
-                        "table",
-                    ]
-
-                    for selector in selectors:
-                        try:
-                            intestati_table = page.locator(selector)
-                            count = await intestati_table.count()
-
-                            if count > 0:
-                                for i in range(count):
-                                    try:
-                                        table_elem = intestati_table.nth(i)
-                                        intestati_html = await table_elem.inner_html(timeout=10000)
-
-                                        if (
-                                            "Cognome" in intestati_html
-                                            or "Nome" in intestati_html
-                                            or "Soggetto" in intestati_html
-                                            or "Nominativo o denominazione" in intestati_html
-                                            or "Codice fiscale" in intestati_html
-                                            or "Titolarità" in intestati_html
-                                        ):
-                                            intestati = parse_table(intestati_html)
+                                else:
+                                    temp_intestati = parse_table(intestati_html)
+                                    if temp_intestati and len(temp_intestati) > 0:
+                                        if "Foglio" not in intestati_html and "Particella" not in intestati_html:
+                                            intestati = temp_intestati
                                             print(
-                                                f"[VISURA] Tabella Intestati estratta (metodo originale): {len(intestati)} righe"
+                                                f"[VISURA] Tabella Intestati estratta (fallback): {len(intestati)} righe"
                                             )
                                             break
-                                        else:
-                                            temp_intestati = parse_table(intestati_html)
-                                            if temp_intestati and len(temp_intestati) > 0:
-                                                if (
-                                                    "Foglio" not in intestati_html
-                                                    and "Particella" not in intestati_html
-                                                ):
-                                                    intestati = temp_intestati
-                                                    print(
-                                                        f"[VISURA] Tabella Intestati estratta (fallback originale): {len(intestati)} righe"
-                                                    )
-                                                    break
-                                    except Exception as e:
-                                        print(f"[DEBUG] Errore con tabella intestati {i}: {e}")
-                                        continue
+                            except Exception as e:
+                                print(f"[DEBUG] Errore con tabella intestati {i}: {e}")
+                                continue
 
-                                if intestati:
-                                    break
+                        if intestati:
+                            break
 
-                        except Exception as e:
-                            print(f"[DEBUG] Errore con selettore intestati {selector}: {e}")
-                            continue
-
-                else:
-                    print("[VISURA] Bottone Intestati non trovato (metodo originale)")
-
-            except Exception as e:
-                print(f"[VISURA] Errore nel metodo originale: {e}")
+                except Exception as e:
+                    print(f"[DEBUG] Errore con selettore intestati {selector}: {e}")
+                    continue
         else:
-            print("[VISURA] Estrazione intestati saltata (extract_intestati=False)")
+            print("[VISURA] Bottone Intestati non trovato")
 
-        # Crea un singolo risultato per compatibilità
-        all_results = [{"result_index": 1, "immobile": immobili[0] if immobili else {}, "intestati": intestati}]
+    except Exception as e:
+        print(f"[VISURA] Errore estrazione intestati: {e}")
 
     time1 = time.time()
     print(f"[VISURA] Visura completata con successo in {time1-time0:.2f} secondi")
-    print(f"[VISURA] Totale risultati processati: {len(all_results)}")
 
-    # Prepara il risultato finale
-    result = {"immobili": immobili, "results": all_results, "total_results": len(all_results)}
-
-    # Mantieni compatibilità con il formato originale per il primo risultato
-    if all_results:
-        result["intestati"] = all_results[0]["intestati"]
-    else:
-        result["intestati"] = []
+    result = {
+        "immobili": immobili,
+        "results": [{"result_index": 1, "immobile": immobili[0] if immobili else {}, "intestati": intestati}],
+        "total_results": len(immobili),
+        "intestati": intestati,
+    }
 
     return result
 
