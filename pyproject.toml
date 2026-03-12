@@ -7,7 +7,7 @@ name = "visura-api"
 version = "0.1.0"
 description = "Servizio API per l'estrazione automatizzata di dati catastali dal portale SISTER dell'Agenzia delle Entrate"
 readme = "README.md"
-license = {text = "GPL-3.0-only"}
+license = {text = "AGPL-3.0-only"}
 requires-python = ">=3.11"
 authors = [
     {name = "Visura API Contributors"}
@@ -16,7 +16,7 @@ keywords = ["catasto", "visura", "sister", "agenzia-entrate", "api", "fastapi"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

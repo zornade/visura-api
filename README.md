@@ -1,6 +1,6 @@
 # Visura API
 
-[![Licenza](https://img.shields.io/badge/Licenza-GPL%20v3-blue.svg)](LICENSE)
+[![Licenza](https://img.shields.io/badge/Licenza-AGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com/)
 
@@ -724,7 +724,7 @@ Per debug approfondito, ispeziona i file HTML in `logs/pages/` — mostrano esat
 
 ## Licenza
 
-Distribuito sotto licenza [GNU General Public License v3.0](LICENSE).
+Distribuito sotto licenza [GNU Affero General Public License v3.0](LICENSE).
 
 ---
 

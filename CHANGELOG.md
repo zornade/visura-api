@@ -8,7 +8,7 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 ## [Non rilasciato]
 
 ### Aggiunto
-- Licenza GPL v3
+- Licenza AGPL v3 (passaggio da GPL v3 per chiudere la SaaS loophole)
 - File CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md
 - Configurazione CI con GitHub Actions
 - File pyproject.toml con metadati del progetto
