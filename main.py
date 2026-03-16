@@ -157,14 +157,14 @@ class BrowserManager:
                 handle_sigint=False,  # Non chiudere Chromium su Ctrl+C — gestiamo noi il logout
                 handle_sigterm=False,  # Idem per SIGTERM
                 args=[
-                    # NB: '--single-process' rimosso: incompatibile con Docker,
-                    # causa crash sporadici su re-init.
+                    # NB: '--single-process' e '--no-zygote' rimossi: causano
+                    # crash immediato di Chromium in Docker su Linux/ARM64
+                    # (Raspberry Pi, AWS Graviton, Apple Silicon emulato).
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
                     "--no-first-run",
-                    "--no-zygote",
                     "--disable-extensions",
                 ],
             )
