@@ -308,8 +308,7 @@ async def login(page: Page):
             raise ValueError("SISTER_USERNAME and SISTER_PASSWORD environment variables must be set")
     else:
         raise ValueError(
-            f"SPID_PROVIDER non supportato: '{spid_provider}'. "
-            "Valori validi: 'sielte', 'poste', 'sister'"
+            f"SPID_PROVIDER non supportato: '{spid_provider}'. " "Valori validi: 'sielte', 'poste', 'sister'"
         )
 
     logger = PageLogger("login")
@@ -433,12 +432,41 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
         await page.wait_for_load_state("networkidle", timeout=30000)
         await logger.log(page, "portale_sister")
 
-        # Verifica blocco sessione (stessa logica del flusso SPID)
-        content = await page.content()
-        url = page.url
-        if "Utente gia' in sessione" in content or "error_locked.jsp" in url:
-            print("[LOGIN][ERRORE] Utente già in sessione su un'altra postazione!")
-            raise Exception("Utente già in sessione su un'altra postazione")
+        # Gestione sessioni orfane: ogni CloseSessionsSis chiude UNA sessione
+        # stale. Dopo molti riavvii possono accumularsi più sessioni, perciò
+        # proviamo fino a 10 volte prima di alzare l'eccezione.
+        for attempt in range(1, 11):
+            content = await page.content()
+            url = page.url
+            if "Utente gia' in sessione" not in content and "error_locked.jsp" not in url:
+                break
+
+            print(f"[LOGIN] Sessione orfana rilevata (tentativo {attempt}/10) — chiudo e riprovo...")
+            step = f"close_session_{attempt}"
+            await page.goto(
+                "https://sister3.agenziaentrate.gov.it/Servizi/CloseSessionsSis",
+                timeout=30000,
+            )
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
+            await logger.log(page, f"close_session_{attempt}")
+
+            step = f"sister_tab_retry_{attempt}"
+            await page.goto(
+                "https://iampe.agenziaentrate.gov.it/sam/UI/Login?realm=/agenziaentrate",
+                timeout=30000,
+            )
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
+            await page.get_by_role("tab", name="Sister").click()
+            await page.get_by_role("textbox", name="Utente:").fill(username)
+            await page.get_by_role("textbox", name="Password:").fill(password)
+            await page.get_by_role("button", name="Accedi").click()
+            await page.wait_for_load_state("networkidle", timeout=30000)
+            await logger.log(page, f"portale_sister_retry_{attempt}")
+        else:
+            print("[LOGIN][ERRORE] Troppe sessioni orfane, impossibile liberare la sessione.")
+            raise Exception("Utente già in sessione su un'altra postazione (max 10 tentativi raggiunto)")
+
+        print("[LOGIN] Login SISTER completato.")
 
     except Exception:
         await logger.log(page, f"ERRORE_sister_{step}")

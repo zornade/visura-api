@@ -166,6 +166,34 @@ def test_login_provider_value_is_case_insensitive(monkeypatch):
         asyncio.run(utils.login(object()))
 
 
+def test_login_sister_provider_requires_sister_credentials(monkeypatch):
+    """SPID_PROVIDER='sister' senza SISTER_USERNAME/PASSWORD → ValueError."""
+    monkeypatch.setenv("SPID_PROVIDER", "sister")
+    monkeypatch.delenv("SISTER_USERNAME", raising=False)
+    monkeypatch.delenv("SISTER_PASSWORD", raising=False)
+
+    with pytest.raises(ValueError, match="SISTER_USERNAME"):
+        asyncio.run(utils.login(object()))
+
+
+def test_login_sister_provider_case_insensitive(monkeypatch):
+    """SPID_PROVIDER='SISTER' (maiuscolo) deve essere normalizzato a 'sister'."""
+    monkeypatch.setenv("SPID_PROVIDER", "SISTER")
+    monkeypatch.delenv("SISTER_USERNAME", raising=False)
+    monkeypatch.delenv("SISTER_PASSWORD", raising=False)
+
+    with pytest.raises(ValueError, match="SISTER_USERNAME"):
+        asyncio.run(utils.login(object()))
+
+
+def test_login_unknown_provider_error_lists_sister(monkeypatch):
+    """Il messaggio di errore deve includere 'sister' tra i valori validi."""
+    monkeypatch.setenv("SPID_PROVIDER", "lepida")
+
+    with pytest.raises(ValueError, match="sister"):
+        asyncio.run(utils.login(object()))
+
+
 def test_run_visura_immobile_requires_subalterno(monkeypatch, tmp_path):
     monkeypatch.setattr(utils, "PAGES_LOG_DIR", str(tmp_path))
 
