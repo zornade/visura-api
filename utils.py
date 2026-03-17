@@ -271,13 +271,23 @@ async def _login_poste(page: Page, logger: PageLogger, username: str, password: 
 async def login(page: Page):
     """Esegue il login completo (SPID + navigazione fino a 'Visure catastali').
 
-    Il provider SPID è selezionato dalla variabile d'ambiente ``SPID_PROVIDER``:
+    Il provider di autenticazione è selezionato dalla variabile d'ambiente
+    ``SPID_PROVIDER`` (case-insensitive):
 
-    * ``sielte`` (default) — Sielte ID, credenziali ``ADE_USERNAME`` / ``ADE_PASSWORD``
-    * ``poste`` — PosteID, credenziali ``POSTE_USERNAME`` / ``POSTE_PASSWORD``
+    * ``sielte`` (default) — SPID Sielte ID, credenziali ``ADE_USERNAME`` /
+      ``ADE_PASSWORD``.
+    * ``poste`` — SPID PosteID, credenziali ``POSTE_USERNAME`` /
+      ``POSTE_PASSWORD``.
+    * ``sister`` — login diretto SISTER tramite il tab dedicato della pagina
+      ADE, credenziali ``SISTER_USERNAME`` / ``SISTER_PASSWORD``. Pensato per
+      l'**intestatario** di una convenzione SISTER che vuole automatizzare le
+      proprie consultazioni con le proprie credenziali nominali (vedi README,
+      sezione "Provider di autenticazione supportati").
 
-    Dopo l'autenticazione SPID il flusso prosegue identico: ricerca del servizio
+    Con i provider SPID il flusso prosegue identico: ricerca del servizio
     SISTER, conferma, navigazione fino a "Visure catastali → Conferma Lettura".
+    Con il provider ``sister`` il login diretto atterra già nell'area del
+    servizio e quei passi vengono saltati.
     """
     spid_provider = os.getenv("SPID_PROVIDER", "sielte").lower()
 
@@ -291,8 +301,16 @@ async def login(page: Page):
         password = os.getenv("POSTE_PASSWORD")
         if not username or not password:
             raise ValueError("POSTE_USERNAME and POSTE_PASSWORD environment variables must be set")
+    elif spid_provider == "sister":
+        username = os.getenv("SISTER_USERNAME")
+        password = os.getenv("SISTER_PASSWORD")
+        if not username or not password:
+            raise ValueError("SISTER_USERNAME and SISTER_PASSWORD environment variables must be set")
     else:
-        raise ValueError(f"SPID_PROVIDER non supportato: '{spid_provider}'. Valori validi: 'sielte', 'poste'")
+        raise ValueError(
+            f"SPID_PROVIDER non supportato: '{spid_provider}'. "
+            "Valori validi: 'sielte', 'poste', 'sister'"
+        )
 
     logger = PageLogger("login")
     step = "init"
@@ -302,6 +320,15 @@ async def login(page: Page):
         print("[LOGIN] Navigo alla pagina di login...")
         await page.goto("https://iampe.agenziaentrate.gov.it/sam/UI/Login?realm=/agenziaentrate")
         await logger.log(page, "goto_login")
+
+        if spid_provider == "sister":
+            # Login diretto SISTER: bypass completo della navigazione ADE portal
+            # (cerca SISTER → Vai al servizio → Conferma → Consultazioni →
+            # Visure catastali → Conferma Lettura) perché l'area servizio si
+            # apre già dopo l'autenticazione SISTER nominale.
+            step = "provider_sister"
+            await _login_sister_direct(page, logger, username, password)
+            return
 
         step = "entra_con_spid"
         print("[LOGIN] Clicco 'Entra con SPID'...")
@@ -359,6 +386,62 @@ async def login(page: Page):
 
     except Exception:
         await logger.log(page, f"ERRORE_{step}")
+        raise
+
+
+async def _login_sister_direct(page: Page, logger: PageLogger, username: str, password: str) -> None:
+    """Esegue il login diretto SISTER tramite il tab dedicato sulla pagina ADE.
+
+    Credenziali richieste:
+        SISTER_USERNAME — username dell'account SISTER nominale dell'utente
+        SISTER_PASSWORD — password dell'account SISTER nominale dell'utente
+
+    Scope d'uso ammesso: questo flusso è destinato all'**intestatario della
+    convenzione SISTER** che desidera automatizzare le proprie consultazioni
+    con le proprie credenziali nominali. Non è destinato a chi vuole rivendere
+    o esporre l'accesso al portale SISTER a terzi (la convenzione SISTER
+    richiede che l'utenza sia personale, non cedibile, e che le consultazioni
+    siano riconducibili all'intestatario).
+
+    Dopo il login si atterra direttamente nella pagina SceltaServizio di
+    SISTER, saltando la navigazione tramite portale ADE (Cerca servizio →
+    Vai al servizio → Conferma → Consultazioni → Visure catastali → Conferma
+    Lettura) che non è necessaria con il login diretto.
+    """
+    step = "sister_tab"
+    try:
+        print("[LOGIN] Clicco tab 'Sister'...")
+        await page.get_by_role("tab", name="Sister").click()
+        await logger.log(page, "sister_tab")
+
+        step = "username"
+        print("[LOGIN] Inserisco username SISTER...")
+        await page.get_by_role("textbox", name="Utente:").fill(username)
+        await logger.log(page, "username")
+
+        step = "password"
+        print("[LOGIN] Inserisco password SISTER...")
+        await page.get_by_role("textbox", name="Password:").fill(password)
+
+        step = "accedi"
+        print("[LOGIN] Clicco 'Accedi'...")
+        await page.get_by_role("button", name="Accedi").click()
+        await logger.log(page, "accedi")
+
+        step = "attesa_sister"
+        print("[LOGIN] Attendo caricamento portale SISTER...")
+        await page.wait_for_load_state("networkidle", timeout=30000)
+        await logger.log(page, "portale_sister")
+
+        # Verifica blocco sessione (stessa logica del flusso SPID)
+        content = await page.content()
+        url = page.url
+        if "Utente gia' in sessione" in content or "error_locked.jsp" in url:
+            print("[LOGIN][ERRORE] Utente già in sessione su un'altra postazione!")
+            raise Exception("Utente già in sessione su un'altra postazione")
+
+    except Exception:
+        await logger.log(page, f"ERRORE_sister_{step}")
         raise
 
 
