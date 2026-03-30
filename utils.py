@@ -2,6 +2,7 @@
 # Copyright (C) 2026 zornade (https://zornade.com)
 # See LICENSE, NOTICE, and COMMERCIAL-LICENSE.md at the repository root.
 
+import logging
 import os
 import re
 import time
@@ -63,6 +64,9 @@ def _resolve_pages_log_dir() -> Optional[str]:
 # o monkey-patchare PAGES_LOG_DIR. È usata da ``_resolve_pages_log_dir`` come
 # default se la variabile d'ambiente omonima non è impostata.
 PAGES_LOG_DIR = DEFAULT_PAGES_LOG_DIR
+
+# Logger di modulo (riusato da consumatori esterni e da _resolve_pages_log_dir).
+logger = logging.getLogger(__name__)
 
 
 def parse_table(html):

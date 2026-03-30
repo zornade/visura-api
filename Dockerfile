@@ -34,13 +34,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia il codice dell'applicazione
 COPY . .
 
-# Installa browser Playwright come root
-RUN playwright install chromium
-
 # Crea un utente non-root per sicurezza e configura directory
 RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/logs && \
     chown -R appuser:appuser /app
+
+# Variabili d'ambiente per Playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
+ENV PYTHONUNBUFFERED=1
 
 USER appuser
 
@@ -49,10 +50,6 @@ RUN playwright install chromium
 
 # Espone la porta
 EXPOSE 8000
-
-# Variabili d'ambiente
-ENV PYTHONUNBUFFERED=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
 
 # Comando di avvio
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

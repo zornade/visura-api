@@ -9,7 +9,6 @@ services:
     env_file:
       - .env
     volumes:
-      - ./:/app
       - ./logs:/app/logs:rw
     restart: unless-stopped
     healthcheck:

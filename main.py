@@ -24,8 +24,9 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from pydantic import BaseModel, Field, validator
 
@@ -646,6 +647,25 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Servizio Visure Catastali", lifespan=lifespan)
 
 # ---------------------------------------------------------------------------
+# Autenticazione e Sicurezza
+# ---------------------------------------------------------------------------
+
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
+async def verify_api_key(api_key: str = Depends(api_key_header)):
+    """Verifica che l'API Key fornita corrisponda a quella configurata."""
+    expected_key = os.getenv("API_KEY")
+    if not expected_key:
+        # Se non è configurata una API Key, la protezione è disabilitata
+        return None
+    if api_key != expected_key:
+        raise HTTPException(status_code=403, detail="API Key non valida o mancante")
+    return api_key
+
+
+# ---------------------------------------------------------------------------
 # Modelli di richiesta
 # ---------------------------------------------------------------------------
 
@@ -712,7 +732,11 @@ class SezioniExtractionRequest(BaseModel):
 
 
 @app.post("/visura")
-async def richiedi_visura(request: VisuraInput, service: VisuraService = Depends(get_visura_service)):
+async def richiedi_visura(
+    request: VisuraInput,
+    service: VisuraService = Depends(get_visura_service),
+    _key: str = Depends(verify_api_key),
+):
     """Richiede una visura catastale fornendo direttamente i dati catastali"""
     try:
         sezione = None if request.sezione == "_" else request.sezione
@@ -747,12 +771,16 @@ async def richiedi_visura(request: VisuraInput, service: VisuraService = Depends
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Errore nella richiesta visura: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Errore: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
 
 
 @app.get("/visura/{request_id}")
-async def ottieni_visura(request_id: str, service: VisuraService = Depends(get_visura_service)):
+async def ottieni_visura(
+    request_id: str,
+    service: VisuraService = Depends(get_visura_service),
+    _key: str = Depends(verify_api_key),
+):
     """Ottiene il risultato di una visura"""
     try:
         response = await service.get_response(request_id)
@@ -774,13 +802,15 @@ async def ottieni_visura(request_id: str, service: VisuraService = Depends(get_v
         )
 
     except Exception as e:
-        logger.error(f"Errore nell'ottenere visura: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Errore nell'ottenere visura: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
 
 
 @app.post("/visura/intestati")
 async def richiedi_intestati_immobile(
-    request: VisuraIntestatiInput, service: VisuraService = Depends(get_visura_service)
+    request: VisuraIntestatiInput,
+    service: VisuraService = Depends(get_visura_service),
+    _key: str = Depends(verify_api_key),
 ):
     """Richiede gli intestati per un immobile specifico."""
     try:
@@ -815,8 +845,8 @@ async def richiedi_intestati_immobile(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Errore nella richiesta intestati: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Errore nella richiesta intestati: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
 
 
 @app.get("/health")
@@ -832,19 +862,25 @@ async def health_check(service: VisuraService = Depends(get_visura_service)):
 
 
 @app.post("/shutdown")
-async def graceful_shutdown_endpoint(service: VisuraService = Depends(get_visura_service)):
+async def graceful_shutdown_endpoint(
+    service: VisuraService = Depends(get_visura_service), _key: str = Depends(verify_api_key)
+):
     """Effettua uno shutdown graceful del servizio"""
     try:
         logger.info("Shutdown graceful richiesto via API")
         await service.graceful_shutdown()
         return JSONResponse({"status": "success", "message": "Shutdown graceful completato"})
     except Exception as e:
-        logger.error(f"Errore durante shutdown graceful via API: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Errore durante shutdown graceful via API: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
 
 
 @app.post("/sezioni/extract")
-async def extract_sezioni(request: SezioniExtractionRequest, service: VisuraService = Depends(get_visura_service)):
+async def extract_sezioni(
+    request: SezioniExtractionRequest,
+    service: VisuraService = Depends(get_visura_service),
+    _key: str = Depends(verify_api_key),
+):
     """
     Estrae le sezioni territoriali d'Italia per il tipo catasto specificato.
     ATTENZIONE: Questa operazione può richiedere diverse ore!
@@ -880,5 +916,5 @@ async def extract_sezioni(request: SezioniExtractionRequest, service: VisuraServ
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Errore durante estrazione sezioni: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Errore durante estrazione sezioni: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
