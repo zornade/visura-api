@@ -691,7 +691,7 @@ ruff check .      # controllo linting
 ### Test
 
 ```bash
-python -m pytest test_*.py -v
+python -m pytest -v
 ```
 
 ### Docker
