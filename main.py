@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
@@ -771,7 +771,7 @@ async def richiedi_visura(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Errore: {e}", exc_info=True)
+        logger.error(f"Errore nella richiesta visura: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
 
 

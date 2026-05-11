@@ -265,6 +265,8 @@ def test_richiedi_visura_wraps_unexpected_exception_as_http_500():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(richiedi_visura(request, BrokenService()))
     assert exc.value.status_code == 500
+    assert "queue down" not in exc.value.detail
+    assert "RuntimeError" not in exc.value.detail
 
 
 def test_ottieni_visura_wraps_unexpected_exception_as_http_500():
@@ -275,6 +277,7 @@ def test_ottieni_visura_wraps_unexpected_exception_as_http_500():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(ottieni_visura("req_1", BrokenService()))
     assert exc.value.status_code == 500
+    assert "store unavailable" not in exc.value.detail
 
 
 def test_richiedi_intestati_wraps_unexpected_exception_as_http_500():
@@ -294,6 +297,7 @@ def test_richiedi_intestati_wraps_unexpected_exception_as_http_500():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(richiedi_intestati_immobile(request, BrokenService()))
     assert exc.value.status_code == 500
+    assert "queue down" not in exc.value.detail
 
 
 def test_graceful_shutdown_endpoint_success():
@@ -428,3 +432,45 @@ def test_visura_service_shutdown_and_graceful_shutdown_toggle_processing(monkeyp
     asyncio.run(service.graceful_shutdown())
     assert service.processing is False
     assert service.browser_manager.graceful is True
+
+
+# ---------------------------------------------------------------------------
+# Test: verify_api_key (autenticazione opzionale via header X-API-Key)
+# ---------------------------------------------------------------------------
+
+
+def test_verify_api_key_disabled_when_env_not_set(monkeypatch):
+    """Senza API_KEY in env, la verifica passa anche con header assente."""
+    monkeypatch.delenv("API_KEY", raising=False)
+    result = asyncio.run(main.verify_api_key(api_key=None))
+    assert result is None
+
+
+def test_verify_api_key_disabled_ignores_provided_header(monkeypatch):
+    """Senza API_KEY in env, qualsiasi header (incluso uno random) è accettato."""
+    monkeypatch.delenv("API_KEY", raising=False)
+    result = asyncio.run(main.verify_api_key(api_key="random-value"))
+    assert result is None
+
+
+def test_verify_api_key_rejects_missing_header_when_enabled(monkeypatch):
+    """Con API_KEY in env, header assente → HTTP 403."""
+    monkeypatch.setenv("API_KEY", "secret-token")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.verify_api_key(api_key=None))
+    assert exc.value.status_code == 403
+
+
+def test_verify_api_key_rejects_wrong_header_when_enabled(monkeypatch):
+    """Con API_KEY in env, header errato → HTTP 403."""
+    monkeypatch.setenv("API_KEY", "secret-token")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.verify_api_key(api_key="wrong-token"))
+    assert exc.value.status_code == 403
+
+
+def test_verify_api_key_accepts_correct_header_when_enabled(monkeypatch):
+    """Con API_KEY in env, header corretto → ritorna la chiave."""
+    monkeypatch.setenv("API_KEY", "secret-token")
+    result = asyncio.run(main.verify_api_key(api_key="secret-token"))
+    assert result == "secret-token"
