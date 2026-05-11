@@ -118,10 +118,51 @@ def test_find_best_option_match_returns_none_when_no_match():
 
 
 def test_login_raises_when_missing_required_env(monkeypatch):
+    monkeypatch.delenv("SPID_PROVIDER", raising=False)
     monkeypatch.delenv("ADE_USERNAME", raising=False)
     monkeypatch.delenv("ADE_PASSWORD", raising=False)
 
     with pytest.raises(ValueError):
+        asyncio.run(utils.login(object()))
+
+
+def test_login_default_provider_is_sielte_when_env_missing(monkeypatch):
+    """SPID_PROVIDER non settato → default 'sielte' (richiede ADE_*)."""
+    monkeypatch.delenv("SPID_PROVIDER", raising=False)
+    monkeypatch.delenv("ADE_USERNAME", raising=False)
+    monkeypatch.delenv("ADE_PASSWORD", raising=False)
+
+    with pytest.raises(ValueError, match="ADE_USERNAME"):
+        asyncio.run(utils.login(object()))
+
+
+def test_login_poste_provider_requires_poste_credentials(monkeypatch):
+    """SPID_PROVIDER='poste' senza POSTE_USERNAME/PASSWORD → ValueError."""
+    monkeypatch.setenv("SPID_PROVIDER", "poste")
+    monkeypatch.delenv("POSTE_USERNAME", raising=False)
+    monkeypatch.delenv("POSTE_PASSWORD", raising=False)
+
+    with pytest.raises(ValueError, match="POSTE_USERNAME"):
+        asyncio.run(utils.login(object()))
+
+
+def test_login_rejects_unknown_provider(monkeypatch):
+    """SPID_PROVIDER con valore non supportato → ValueError con lista valida."""
+    monkeypatch.setenv("SPID_PROVIDER", "lepida")
+
+    with pytest.raises(ValueError, match="sielte.*poste|poste.*sielte"):
+        asyncio.run(utils.login(object()))
+
+
+def test_login_provider_value_is_case_insensitive(monkeypatch):
+    """SPID_PROVIDER='POSTE' (maiuscolo) deve essere normalizzato a 'poste'."""
+    monkeypatch.setenv("SPID_PROVIDER", "POSTE")
+    monkeypatch.delenv("POSTE_USERNAME", raising=False)
+    monkeypatch.delenv("POSTE_PASSWORD", raising=False)
+
+    # Se la normalizzazione case-insensitive funziona, deve arrivare al
+    # controllo POSTE_USERNAME e sollevare il ValueError specifico.
+    with pytest.raises(ValueError, match="POSTE_USERNAME"):
         asyncio.run(utils.login(object()))
 
 
