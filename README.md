@@ -54,7 +54,7 @@ Entrambe le richieste vengono accodate ed eseguite sequenzialmente su un singolo
 
 ### Funzionalità principali
 
-- **Autenticazione SPID automatizzata** via provider Sielte ID (CIE Sign) con push notification
+- **Autenticazione SPID/SISTER automatizzata** — provider Sielte ID, PosteID o login diretto SISTER (selezionabile via `SPID_PROVIDER`)
 - **Coda sequenziale** — le richieste vengono processate una alla volta per non sovraccaricare il portale
 - **Ri-autenticazione automatica** — alla scadenza della sessione, il servizio tenta prima un recovery diretto e, solo se necessario, un nuovo login SPID
 - **Keep-alive** — la sessione viene mantenuta attiva con un light keep-alive ogni 30 secondi e un refresh profondo ogni 5 minuti
@@ -62,9 +62,23 @@ Entrambe le richieste vengono accodate ed eseguite sequenzialmente su un singolo
 - **Logging HTML completo** — ogni pagina visitata dal browser viene salvata su disco per debug e audit
 - **Docker-ready** — immagine pronta con tutte le dipendenze di sistema per Chromium headless
 
-### Compatibilità SPID
+### Provider di autenticazione supportati
 
-Il login automatizzato funziona **esclusivamente** con il provider **Sielte ID (CIE Sign)**. Il flusso prevede l'approvazione via push notification sull'app MySielteID. Altri provider SPID non sono supportati e richiederebbero modifiche alla funzione `login()` in `utils.py`.
+Il provider è selezionato dalla variabile d'ambiente `SPID_PROVIDER` (case-insensitive, default `sielte`):
+
+| `SPID_PROVIDER` | Provider | Credenziali richieste | 2° fattore |
+|-----------------|----------|------------------------|------------|
+| `sielte` (default) | SPID Sielte ID | `ADE_USERNAME`, `ADE_PASSWORD` | push notification su app MySielteID |
+| `poste` | SPID PosteID | `POSTE_USERNAME`, `POSTE_PASSWORD` | approvazione su app PosteID |
+| `sister` | Login diretto SISTER (tab dedicato sulla pagina ADE) | `SISTER_USERNAME`, `SISTER_PASSWORD` | nessuno (credenziali nominali professionali) |
+
+#### Scope d'uso ammesso per il provider `sister`
+
+> Il login diretto SISTER è destinato esclusivamente all'**intestatario della convenzione SISTER** che desidera automatizzare le proprie consultazioni con le proprie credenziali nominali.
+>
+> **Non è destinato** a chi vuole rivendere o esporre l'accesso al portale SISTER a terzi: la convenzione SISTER (Agenzia delle Entrate) richiede che l'utenza sia personale, non cedibile, e che le consultazioni siano riconducibili all'intestatario.
+>
+> Questo progetto è una libreria di automazione: la responsabilità dell'uso delle credenziali e del rispetto dei termini di convenzione resta dell'intestatario, esattamente come per il flusso SPID.
 
 ### Limitazioni note
 
