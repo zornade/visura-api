@@ -1,0 +1,23 @@
+name: Auto-assign PR author
+
+# Assegna automaticamente l'autore della PR come assignee. Utile per popolare
+# la dashboard "Assigned to you" senza dover ricordarsi di farlo a mano.
+#
+# Usa `pull_request_target` per poter scrivere sui PR aperti da fork esterni
+# (il token del fork non avrebbe i permessi `pull-requests: write`).
+# Lo scope è strettamente limitato a scrivere assignment sulla PR — nessuna
+# esecuzione di codice della PR avviene in questo job.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  assign-author:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign PR author as assignee
+        uses: toshimaru/auto-author-assign@16f0022cf3d7970c106d8d1105f75a1165edb516 # v2.1.1
