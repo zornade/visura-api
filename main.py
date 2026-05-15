@@ -24,14 +24,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional
 
+from cachetools import TTLCache
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, Field, field_validator
-
-from cachetools import TTLCache
 
 from utils import PageLogger, extract_all_sezioni, login, logout, run_visura, run_visura_immobile
 
@@ -100,7 +100,9 @@ class VisuraRequest:
     sezione: Optional[str] = None
     subalterno: Optional[str] = None  # Opzionale: restringe la ricerca per fabbricati
     codice_belfiore: Optional[str] = None  # Opzionale: se valorizzato bypassa il match-by-name del comune
-    fallback_other_catasto: bool = False  # Se True e il primo tentativo NON trova nulla, riprova sull'altro catasto (T<->F)
+    fallback_other_catasto: bool = (
+        False  # Se True e il primo tentativo NON trova nulla, riprova sull'altro catasto (T<->F)
+    )
     timestamp: datetime = None
 
     def __post_init__(self):
@@ -249,6 +251,7 @@ class BrowserManager:
             # le option list saranno ri-popolate alla prima richiesta.
             try:
                 from utils import invalidate_dropdown_cache
+
                 invalidate_dropdown_cache(reason="browser_initialize")
             except Exception as e:
                 logger.warning(f"invalidate_dropdown_cache failed at init: {e}")
@@ -258,26 +261,68 @@ class BrowserManager:
             raise BrowserError(f"Browser initialization failed: {e}") from e
 
     async def login(self):
-        """Esegue il login nella prima tab"""
-        try:
-            # Chiudi la vecchia pagina prima di crearne una nuova
-            if self.auth_page and not self.auth_page.is_closed():
-                try:
-                    await self.auth_page.close()
-                    logger.info("Vecchia pagina di autenticazione chiusa")
-                except Exception as e:
-                    logger.warning(f"Errore chiudendo vecchia pagina: {e}")
+        """Esegue il login nella prima tab con retry per push SPID non approvata.
 
-            page = await self.context.new_page()
-            await login(page)
-            self.auth_page = page
-            self.authenticated = True
-            self.last_login_time = datetime.now()
-            logger.info("Login completato con successo")
-        except Exception as e:
-            logger.error(f"Errore durante il login: {e}")
-            self.authenticated = False
-            raise AuthenticationError(f"Login failed: {e}") from e
+        Distingue due classi di errore:
+
+        * ``PlaywrightTimeoutError`` — tipicamente la push SPID non e' stata
+          approvata in tempo dall'utente (timeout 120s sul click 'Autorizza'
+          per Sielte o sul redirect post-push per Poste). Ritentiamo fino a
+          ``LOGIN_MAX_ATTEMPTS`` (default 3) volte, con un breve sleep tra
+          tentativi per evitare push back-to-back.
+        * Altri errori (``RuntimeError`` fail-fast su credenziali sbagliate,
+          ``BrowserError``, ecc.) — falliscono al primo colpo perche'
+          ritentare e' inutile (le credenziali errate restano errate).
+        """
+        max_attempts = max(1, int(os.getenv("LOGIN_MAX_ATTEMPTS", "3")))
+        retry_delay_s = max(0, int(os.getenv("LOGIN_RETRY_DELAY_S", "5")))
+        last_exc: Optional[Exception] = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Chiudi la vecchia pagina prima di crearne una nuova
+                if self.auth_page and not self.auth_page.is_closed():
+                    try:
+                        await self.auth_page.close()
+                        logger.info("Vecchia pagina di autenticazione chiusa")
+                    except Exception as e:
+                        logger.warning(f"Errore chiudendo vecchia pagina: {e}")
+
+                page = await self.context.new_page()
+                logger.info(f"Tentativo login {attempt}/{max_attempts}")
+                await login(page)
+                self.auth_page = page
+                self.authenticated = True
+                self.last_login_time = datetime.now()
+                logger.info(f"Login completato con successo al tentativo {attempt}")
+                return
+            except PlaywrightTimeoutError as e:
+                # Push SPID non approvata in tempo — utente probabilmente
+                # distratto o push arrivata in ritardo. Ritentiamo.
+                last_exc = e
+                logger.warning(
+                    f"Tentativo login {attempt}/{max_attempts} fallito per timeout "
+                    f"(probabile push SPID non approvata): {e}"
+                )
+                self.authenticated = False
+                if attempt < max_attempts:
+                    logger.info(
+                        f"Attendo {retry_delay_s}s prima del prossimo tentativo "
+                        f"(controlla l'app SPID per la prossima notifica push)"
+                    )
+                    await asyncio.sleep(retry_delay_s)
+            except Exception as e:
+                # Errori non-timeout (credenziali errate, browser crash, ecc.):
+                # fail-fast, non ritentare.
+                logger.error(f"Errore non recuperabile durante il login: {e}")
+                self.authenticated = False
+                raise AuthenticationError(f"Login failed: {e}") from e
+
+        # Esauriti tutti i tentativi su timeout
+        logger.error(f"Login fallito dopo {max_attempts} tentativi: push SPID mai approvata")
+        raise AuthenticationError(
+            f"Login failed after {max_attempts} attempts (push SPID not approved " f"in time): {last_exc}"
+        ) from last_exc
 
     async def start_keep_alive(self):
         """Mantiene la sessione attiva con attività realistiche"""
@@ -498,10 +543,7 @@ class BrowserManager:
             fallback_used = False
             # Detect "not found": run_visura ritorna esplicitamente
             # error="NESSUNA CORRISPONDENZA TROVATA" e total_results=0 in quel caso.
-            not_found = (
-                isinstance(result, dict)
-                and result.get("error") == "NESSUNA CORRISPONDENZA TROVATA"
-            )
+            not_found = isinstance(result, dict) and result.get("error") == "NESSUNA CORRISPONDENZA TROVATA"
             if not_found and request.fallback_other_catasto:
                 other = "F" if request.tipo_catasto == "T" else "T"
                 logger.info(
@@ -515,7 +557,10 @@ class BrowserManager:
                     logger.warning(f"[FALLBACK] fallito su catasto '{other}': {e}")
                 else:
                     # Adotta il risultato del fallback solo se ha trovato qualcosa
-                    if isinstance(fallback_result, dict) and fallback_result.get("error") != "NESSUNA CORRISPONDENZA TROVATA":
+                    if (
+                        isinstance(fallback_result, dict)
+                        and fallback_result.get("error") != "NESSUNA CORRISPONDENZA TROVATA"
+                    ):
                         result = fallback_result
                         tipo_used = other
                         fallback_used = True
@@ -526,8 +571,7 @@ class BrowserManager:
                 result["fallback_used"] = fallback_used
 
             logger.info(
-                f"Visura completata per request {request.request_id} "
-                f"(tipo={tipo_used}, fallback={fallback_used})"
+                f"Visura completata per request {request.request_id} " f"(tipo={tipo_used}, fallback={fallback_used})"
             )
             return VisuraResponse(
                 request_id=request.request_id,
@@ -732,9 +776,7 @@ class VisuraService:
         try:
             self.request_queue.put_nowait({"request": request})
         except asyncio.QueueFull as e:
-            raise QueueFullError(
-                f"Coda piena (limite {self.request_queue.maxsize}): riprovare più tardi"
-            ) from e
+            raise QueueFullError(f"Coda piena (limite {self.request_queue.maxsize}): riprovare più tardi") from e
         logger.info(
             f"Richiesta visura {request.request_id} aggiunta alla coda (posizione: {self.request_queue.qsize()})"
         )
@@ -749,9 +791,7 @@ class VisuraService:
         try:
             self.request_queue.put_nowait({"request": request})
         except asyncio.QueueFull as e:
-            raise QueueFullError(
-                f"Coda piena (limite {self.request_queue.maxsize}): riprovare più tardi"
-            ) from e
+            raise QueueFullError(f"Coda piena (limite {self.request_queue.maxsize}): riprovare più tardi") from e
         logger.info(
             f"Richiesta intestati {request.request_id} aggiunta alla coda (posizione: {self.request_queue.qsize()})"
         )
@@ -846,8 +886,7 @@ async def verify_api_key_strict(api_key: str = Depends(api_key_header)):
         raise HTTPException(
             status_code=503,
             detail=(
-                "Endpoint amministrativo disabilitato: configurare la "
-                "variabile d'ambiente API_KEY per abilitarlo."
+                "Endpoint amministrativo disabilitato: configurare la " "variabile d'ambiente API_KEY per abilitarlo."
             ),
         )
     if not api_key or not secrets.compare_digest(api_key, expected_key):

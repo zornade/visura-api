@@ -137,6 +137,7 @@ def test_find_best_option_match_returns_none_when_no_match():
 
 # --- F-NEW1/F-NEW2: normalizzazione provincia/comune SISTER -----------------
 
+
 def test_normalize_strips_accents_and_apostrophes():
     assert utils._normalize_for_match("L'Aquila") == "l aquila"
     assert utils._normalize_for_match("L\u2019AQUILA Territorio") == "l aquila"
@@ -152,11 +153,13 @@ def test_normalize_strips_territorio_suffix():
 
 def test_find_best_option_match_handles_aquila_with_apostrophe():
     """Caso F-NEW1: input ISTAT `L'Aquila`, option SISTER `L'AQUILA Territorio`."""
-    page = _FakePageForMatch([
-        _FakeOption("ALESSANDRIA", "ALESSANDRIA Territorio"),
-        _FakeOption("L'AQUILA", "L'AQUILA Territorio"),
-        _FakeOption("AOSTA", "AOSTA Territorio"),
-    ])
+    page = _FakePageForMatch(
+        [
+            _FakeOption("ALESSANDRIA", "ALESSANDRIA Territorio"),
+            _FakeOption("L'AQUILA", "L'AQUILA Territorio"),
+            _FakeOption("AOSTA", "AOSTA Territorio"),
+        ]
+    )
     result = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "L'Aquila"))
     assert result == "L'AQUILA"
 
@@ -171,84 +174,86 @@ def test_find_best_option_match_handles_typographic_apostrophe():
 def test_find_best_option_match_handles_reggio_emilia():
     """Caso live: ISTAT espone `Reggio nell'Emilia` ma SISTER mostra solo
     `REGGIO EMILIA Territorio`. Risolto tramite alias catastale."""
-    page = _FakePageForMatch([
-        _FakeOption("REGGIO EMILIA", "REGGIO EMILIA Territorio"),
-        _FakeOption("REGGIO CALABRIA", "REGGIO CALABRIA Territorio"),
-    ])
-    result = asyncio.run(
-        utils.find_best_option_match(page, "select[name='listacom']", "Reggio nell'Emilia")
+    page = _FakePageForMatch(
+        [
+            _FakeOption("REGGIO EMILIA", "REGGIO EMILIA Territorio"),
+            _FakeOption("REGGIO CALABRIA", "REGGIO CALABRIA Territorio"),
+        ]
     )
+    result = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "Reggio nell'Emilia"))
     assert result == "REGGIO EMILIA"
 
 
 def test_find_best_option_match_catastal_alias_verbano_to_verbania():
     """Caso F-NEW1: ISTAT `Verbano-Cusio-Ossola` → catasto `Verbania`."""
-    page = _FakePageForMatch([
-        _FakeOption("VARESE", "VARESE Territorio"),
-        _FakeOption("VERBANIA", "VERBANIA Territorio"),
-        _FakeOption("VERCELLI", "VERCELLI Territorio"),
-    ])
-    result = asyncio.run(
-        utils.find_best_option_match(page, "select[name='listacom']", "Verbano-Cusio-Ossola")
+    page = _FakePageForMatch(
+        [
+            _FakeOption("VARESE", "VARESE Territorio"),
+            _FakeOption("VERBANIA", "VERBANIA Territorio"),
+            _FakeOption("VERCELLI", "VERCELLI Territorio"),
+        ]
     )
+    result = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "Verbano-Cusio-Ossola"))
     assert result == "VERBANIA"
 
 
 def test_find_best_option_match_catastal_alias_sud_sardegna_to_cagliari():
     """Sud Sardegna (istituita 2016) → SISTER la mappa sotto CAGLIARI."""
-    page = _FakePageForMatch([
-        _FakeOption("CAGLIARI", "CAGLIARI Territorio"),
-        _FakeOption("CALTANISSETTA", "CALTANISSETTA Territorio"),
-    ])
-    result = asyncio.run(
-        utils.find_best_option_match(page, "select[name='listacom']", "Sud Sardegna")
+    page = _FakePageForMatch(
+        [
+            _FakeOption("CAGLIARI", "CAGLIARI Territorio"),
+            _FakeOption("CALTANISSETTA", "CALTANISSETTA Territorio"),
+        ]
     )
+    result = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "Sud Sardegna"))
     assert result == "CAGLIARI"
 
 
 def test_find_best_option_match_catastal_alias_pesaro_e_urbino_to_pesaro():
     """ISTAT `Pesaro e Urbino` → SISTER `PESARO Territorio`."""
-    page = _FakePageForMatch([
-        _FakeOption("PESARO", "PESARO Territorio"),
-        _FakeOption("PERUGIA", "PERUGIA Territorio"),
-    ])
-    result = asyncio.run(
-        utils.find_best_option_match(page, "select[name='listacom']", "Pesaro e Urbino")
+    page = _FakePageForMatch(
+        [
+            _FakeOption("PESARO", "PESARO Territorio"),
+            _FakeOption("PERUGIA", "PERUGIA Territorio"),
+        ]
     )
+    result = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "Pesaro e Urbino"))
     assert result == "PESARO"
 
 
 def test_find_best_option_match_catastal_alias_valle_aosta_bilingue_to_aosta():
     """ISTAT `Valle d'Aosta/Vallée d'Aoste` (bilingue) → SISTER `AOSTA Territorio`."""
-    page = _FakePageForMatch([
-        _FakeOption("AOSTA", "AOSTA Territorio"),
-        _FakeOption("ALESSANDRIA", "ALESSANDRIA Territorio"),
-    ])
-    result = asyncio.run(
-        utils.find_best_option_match(page, "select[name='listacom']", "Valle d'Aosta/Vallée d'Aoste")
+    page = _FakePageForMatch(
+        [
+            _FakeOption("AOSTA", "AOSTA Territorio"),
+            _FakeOption("ALESSANDRIA", "ALESSANDRIA Territorio"),
+        ]
     )
+    result = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "Valle d'Aosta/Vallée d'Aoste"))
     assert result == "AOSTA"
 
 
 def test_find_best_option_match_catastal_alias_monza_to_milano():
     """ISTAT `Monza e della Brianza`: SISTER non la espone, i suoi comuni sono
     catastalmente sotto MILANO Territorio (storico pre-2009)."""
-    page = _FakePageForMatch([
-        _FakeOption("MILANO", "MILANO Territorio"),
-        _FakeOption("MANTOVA", "MANTOVA Territorio"),
-    ])
-    result = asyncio.run(
-        utils.find_best_option_match(page, "select[name='listacom']", "Monza e della Brianza")
+    page = _FakePageForMatch(
+        [
+            _FakeOption("MILANO", "MILANO Territorio"),
+            _FakeOption("MANTOVA", "MANTOVA Territorio"),
+        ]
     )
+    result = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "Monza e della Brianza"))
     assert result == "MILANO"
 
 
 def test_find_best_option_match_comune_with_grave_accent():
     """Caso F-NEW2: comune `Alì` (con accento grave) deve matchare `ALI'` / `ALI`."""
-    page = _FakePageForMatch([
-        _FakeOption("ALI'", "ALI'"),
-        _FakeOption("ALI TERME", "ALI' TERME"),
-    ])
+    page = _FakePageForMatch(
+        [
+            _FakeOption("ALI'", "ALI'"),
+            _FakeOption("ALI TERME", "ALI' TERME"),
+        ]
+    )
     result = asyncio.run(utils.find_best_option_match(page, "select[name='denomComune']", "Alì"))
     assert result == "ALI'"
 
@@ -454,32 +459,29 @@ def test_page_logger_disabled_when_no_writable_dir(monkeypatch):
 
 # -------- P1 #6: find_option_by_codice_belfiore --------
 
+
 def test_find_option_by_codice_belfiore_returns_value_with_prefix():
     """SISTER option value format: 'CODICE#NOME#0#0' (es. H501#ROMA#0#0)."""
-    page = _FakePageForMatch([
-        _FakeOption("A737#BELFIORE#0#0", "BELFIORE"),
-        _FakeOption("H501#ROMA#0#0", "ROMA"),
-        _FakeOption("F839#CASANDRINO#0#0", "CASANDRINO"),
-    ])
-    result = asyncio.run(
-        utils.find_option_by_codice_belfiore(page, "select[name='denomComune']", "H501")
+    page = _FakePageForMatch(
+        [
+            _FakeOption("A737#BELFIORE#0#0", "BELFIORE"),
+            _FakeOption("H501#ROMA#0#0", "ROMA"),
+            _FakeOption("F839#CASANDRINO#0#0", "CASANDRINO"),
+        ]
     )
+    result = asyncio.run(utils.find_option_by_codice_belfiore(page, "select[name='denomComune']", "H501"))
     assert result == "H501#ROMA#0#0"
 
 
 def test_find_option_by_codice_belfiore_is_case_insensitive():
     page = _FakePageForMatch([_FakeOption("H501#ROMA#0#0", "ROMA")])
-    result = asyncio.run(
-        utils.find_option_by_codice_belfiore(page, "sel", "h501")
-    )
+    result = asyncio.run(utils.find_option_by_codice_belfiore(page, "sel", "h501"))
     assert result == "H501#ROMA#0#0"
 
 
 def test_find_option_by_codice_belfiore_returns_none_on_missing():
     page = _FakePageForMatch([_FakeOption("A737#BELFIORE#0#0", "BELFIORE")])
-    result = asyncio.run(
-        utils.find_option_by_codice_belfiore(page, "sel", "Z999")
-    )
+    result = asyncio.run(utils.find_option_by_codice_belfiore(page, "sel", "Z999"))
     assert result is None
 
 
@@ -492,13 +494,16 @@ def test_find_option_by_codice_belfiore_returns_none_on_empty_input():
 
 # -------- MVP-2: dropdown cache + _collect_options_fast --------
 
+
 def test_collect_options_fast_returns_value_text_tuples():
     """Single page.evaluate path: ritorna lista di (value, text) normalizzata."""
-    page = _FakePageForMatch([
-        _FakeOption("V1", "  T1  "),
-        _FakeOption("V2", "T2"),
-        _FakeOption("", "skipped_text_only"),
-    ])
+    page = _FakePageForMatch(
+        [
+            _FakeOption("V1", "  T1  "),
+            _FakeOption("V2", "T2"),
+            _FakeOption("", "skipped_text_only"),
+        ]
+    )
     items = asyncio.run(utils._collect_options_fast(page, "any"))
     # Il fake evaluate fa strip() su text; value vuoto resta vuoto
     assert items == [("V1", "T1"), ("V2", "T2"), ("", "skipped_text_only")]
@@ -518,9 +523,11 @@ def test_dropdown_cache_province_hit_avoids_second_evaluate(monkeypatch):
     # Conta quante volte _collect_options_fast viene chiamato
     calls = {"n": 0}
     real = utils._collect_options_fast
+
     async def counting(p, s):
         calls["n"] += 1
         return await real(p, s)
+
     monkeypatch.setattr(utils, "_collect_options_fast", counting)
 
     r1 = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "ROMA"))
@@ -537,9 +544,11 @@ def test_dropdown_cache_disabled_refetches_each_time(monkeypatch):
 
     calls = {"n": 0}
     real = utils._collect_options_fast
+
     async def counting(p, s):
         calls["n"] += 1
         return await real(p, s)
+
     monkeypatch.setattr(utils, "_collect_options_fast", counting)
 
     asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "ROMA"))
@@ -551,18 +560,22 @@ def test_find_option_by_codice_belfiore_no_cache_when_provincia_unknown(monkeypa
     """Il path comune con provincia_value=None NON deve cachare (evita cross-province
     poisoning, regressione 2026-05-15: Mantova comuni riusati per Savona/Pesaro).
     Aspettato: una evaluate per chiamata."""
-    page = _FakePageForMatch([
-        _FakeOption("H501#ROMA#0#0", "ROMA"),
-        _FakeOption("F205#MILANO#0#0", "MILANO"),
-    ])
+    page = _FakePageForMatch(
+        [
+            _FakeOption("H501#ROMA#0#0", "ROMA"),
+            _FakeOption("F205#MILANO#0#0", "MILANO"),
+        ]
+    )
     monkeypatch.setenv("DROPDOWN_CACHE", "1")
     utils.invalidate_dropdown_cache(reason="test_setup")
 
     calls = {"n": 0}
     real = utils._collect_options_fast
+
     async def counting(p, s):
         calls["n"] += 1
         return await real(p, s)
+
     monkeypatch.setattr(utils, "_collect_options_fast", counting)
 
     r1 = asyncio.run(utils.find_option_by_codice_belfiore(page, "select[name='denomComune']", "H501"))
@@ -580,32 +593,45 @@ def test_comune_cache_scoped_by_provincia(monkeypatch):
     - stessa provincia → 1 evaluate per 2 lookup (cache hit)
     - provincia diversa → 2 evaluate per 2 lookup (chiave diversa, no poisoning)
     """
-    page = _FakePageForMatch([
-        _FakeOption("H501#ROMA#0#0", "ROMA"),
-        _FakeOption("F205#MILANO#0#0", "MILANO"),
-    ])
+    page = _FakePageForMatch(
+        [
+            _FakeOption("H501#ROMA#0#0", "ROMA"),
+            _FakeOption("F205#MILANO#0#0", "MILANO"),
+        ]
+    )
     monkeypatch.setenv("DROPDOWN_CACHE", "1")
     utils.invalidate_dropdown_cache(reason="test_setup")
 
     calls = {"n": 0}
     real = utils._collect_options_fast
+
     async def counting(p, s):
         calls["n"] += 1
         return await real(p, s)
+
     monkeypatch.setattr(utils, "_collect_options_fast", counting)
 
     # Stessa provincia → seconda chiamata cache hit
-    r1 = asyncio.run(utils.find_option_by_codice_belfiore(
-        page, "select[name='denomComune']", "H501", provincia_value="ROMA Territorio-RM"))
-    r2 = asyncio.run(utils.find_option_by_codice_belfiore(
-        page, "select[name='denomComune']", "F205", provincia_value="ROMA Territorio-RM"))
+    r1 = asyncio.run(
+        utils.find_option_by_codice_belfiore(
+            page, "select[name='denomComune']", "H501", provincia_value="ROMA Territorio-RM"
+        )
+    )
+    r2 = asyncio.run(
+        utils.find_option_by_codice_belfiore(
+            page, "select[name='denomComune']", "F205", provincia_value="ROMA Territorio-RM"
+        )
+    )
     assert r1 == "H501#ROMA#0#0"
     assert r2 == "F205#MILANO#0#0"
     assert calls["n"] == 1, f"expected 1 evaluate (same provincia), got {calls['n']}"
 
     # Provincia diversa → cache miss separata (no poisoning)
-    r3 = asyncio.run(utils.find_option_by_codice_belfiore(
-        page, "select[name='denomComune']", "H501", provincia_value="MILANO Territorio-MI"))
+    r3 = asyncio.run(
+        utils.find_option_by_codice_belfiore(
+            page, "select[name='denomComune']", "H501", provincia_value="MILANO Territorio-MI"
+        )
+    )
     assert r3 == "H501#ROMA#0#0"
     assert calls["n"] == 2, f"expected 2 evaluate (diff provincia), got {calls['n']}"
 
@@ -617,24 +643,30 @@ def test_comune_cache_scoped_by_provincia(monkeypatch):
 def test_find_best_option_match_comune_uses_provincia_scoped_cache(monkeypatch):
     """find_best_option_match con provincia_value valorizzato sfrutta la cache
     comune scoped, senza cross-province poisoning."""
-    page = _FakePageForMatch([
-        _FakeOption("H501#ROMA#0#0", "ROMA"),
-        _FakeOption("F205#MILANO#0#0", "MILANO"),
-    ])
+    page = _FakePageForMatch(
+        [
+            _FakeOption("H501#ROMA#0#0", "ROMA"),
+            _FakeOption("F205#MILANO#0#0", "MILANO"),
+        ]
+    )
     monkeypatch.setenv("DROPDOWN_CACHE", "1")
     utils.invalidate_dropdown_cache(reason="test_setup")
 
     calls = {"n": 0}
     real = utils._collect_options_fast
+
     async def counting(p, s):
         calls["n"] += 1
         return await real(p, s)
+
     monkeypatch.setattr(utils, "_collect_options_fast", counting)
 
-    r1 = asyncio.run(utils.find_best_option_match(
-        page, "select[name='denomComune']", "ROMA", provincia_value="ROMA Territorio-RM"))
-    r2 = asyncio.run(utils.find_best_option_match(
-        page, "select[name='denomComune']", "MILANO", provincia_value="ROMA Territorio-RM"))
+    r1 = asyncio.run(
+        utils.find_best_option_match(page, "select[name='denomComune']", "ROMA", provincia_value="ROMA Territorio-RM")
+    )
+    r2 = asyncio.run(
+        utils.find_best_option_match(page, "select[name='denomComune']", "MILANO", provincia_value="ROMA Territorio-RM")
+    )
     assert r1 == "H501#ROMA#0#0"
     assert r2 == "F205#MILANO#0#0"
     assert calls["n"] == 1, f"expected 1 evaluate (cache hit by provincia), got {calls['n']}"

@@ -516,10 +516,7 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
         MAX_CLOSE_ATTEMPTS = 10
 
         def _is_orphan(content: str, current_url: str) -> bool:
-            return (
-                "Utente gia' in sessione" in content
-                or "error_locked.jsp" in current_url
-            )
+            return "Utente gia' in sessione" in content or "error_locked.jsp" in current_url
 
         content = await page.content()
         url = page.url
@@ -606,13 +603,13 @@ _CATASTAL_PROVINCE_ALIASES = {
 _UNSUPPORTED_PROVINCES_SISTER = {
     # Provincia Autonoma di Trento — Catasto Tavolare (Libro Fondiario)
     "trento": "Provincia Autonoma di Trento: catasto gestito dal Sistema "
-              "Tavolare (Libro Fondiario), non disponibile su SISTER.",
+    "Tavolare (Libro Fondiario), non disponibile su SISTER.",
     # Provincia Autonoma di Bolzano / Südtirol — Catasto Tavolare
     "bolzano": "Provincia Autonoma di Bolzano: catasto gestito dal Sistema "
-               "Tavolare (Libro Fondiario), non disponibile su SISTER.",
+    "Tavolare (Libro Fondiario), non disponibile su SISTER.",
     "bolzano bozen": "Provincia Autonoma di Bolzano: catasto gestito dal "
-                     "Sistema Tavolare (Libro Fondiario), non disponibile "
-                     "su SISTER.",
+    "Sistema Tavolare (Libro Fondiario), non disponibile "
+    "su SISTER.",
 }
 
 
@@ -815,10 +812,7 @@ async def _get_comune_options(page, provincia_value: Optional[str]) -> dict:
         key = ("comune", provincia_value)
         cached = _DROPDOWN_CACHE.get(key)
         if cached is not None:
-            print(
-                f"[CACHE] hit kind=comune provincia='{provincia_value}' "
-                f"count={len(cached['items'])}"
-            )
+            print(f"[CACHE] hit kind=comune provincia='{provincia_value}' " f"count={len(cached['items'])}")
             return cached
         print(f"[CACHE] miss kind=comune provincia='{provincia_value}' fetching live")
     elif not provincia_value:
@@ -874,10 +868,7 @@ async def find_option_by_codice_belfiore(
             print(f"[MATCH_BELFIORE] hit cache cb='{cb}' -> '{value}'")
             return value
         # No-hit: log e ritorna None (caller fa fallback su match by name)
-        print(
-            f"[MATCH_BELFIORE] miss cb='{cb}' tra {len(idx['items'])} option "
-            f"(comuni provincia corrente)"
-        )
+        print(f"[MATCH_BELFIORE] miss cb='{cb}' tra {len(idx['items'])} option " f"(comuni provincia corrente)")
         return None
     # Path generico (no cache): un solo evaluate + scan
     items = await _collect_options_fast(page, selector)
@@ -991,17 +982,13 @@ async def find_best_option_match(page, selector, search_text, provincia_value: O
 
         # PRIORITÀ 6: Alias catastale (es. Verbano-Cusio-Ossola → Verbania)
         if search_alias and (
-            text_norm == search_alias
-            or text_norm.startswith(search_alias)
-            or search_alias in text_norm
+            text_norm == search_alias or text_norm.startswith(search_alias) or search_alias in text_norm
         ):
             score = len(search_alias) / max(len(text_norm), 1) * 0.5
             if score > best_score:
                 best_score = score
                 best_match = value
-                print(
-                    f"[MATCH] Candidato (alias '{search_alias}'): '{text}' -> '{value}' (score: {score:.2f})"
-                )
+                print(f"[MATCH] Candidato (alias '{search_alias}'): '{text}' -> '{value}' (score: {score:.2f})")
 
     if best_match:
         print(f"[MATCH] Migliore match trovato: '{best_match}' (score: {best_score:.2f})")
@@ -1142,7 +1129,9 @@ async def run_visura(
     comune_value = None
     if codice_belfiore:
         comune_value = await find_option_by_codice_belfiore(
-            page, "select[name='denomComune']", codice_belfiore,
+            page,
+            "select[name='denomComune']",
+            codice_belfiore,
             provincia_value=provincia_value,
         )
         if not comune_value:
@@ -1153,7 +1142,9 @@ async def run_visura(
 
     if not comune_value:
         comune_value = await find_best_option_match(
-            page, "select[name='denomComune']", comune,
+            page,
+            "select[name='denomComune']",
+            comune,
             provincia_value=provincia_value,
         )
 
@@ -1678,7 +1669,13 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
 
 
 async def run_visura_immobile(
-    page, provincia="Trieste", comune="Trieste", sezione=None, foglio="9", particella="166", subalterno=None,
+    page,
+    provincia="Trieste",
+    comune="Trieste",
+    sezione=None,
+    foglio="9",
+    particella="166",
+    subalterno=None,
     codice_belfiore: Optional[str] = None,
 ):
     """
@@ -1758,7 +1755,9 @@ async def run_visura_immobile(
     comune_value = None
     if codice_belfiore:
         comune_value = await find_option_by_codice_belfiore(
-            page, "select[name='denomComune']", codice_belfiore,
+            page,
+            "select[name='denomComune']",
+            codice_belfiore,
             provincia_value=provincia_value,
         )
         if not comune_value:
@@ -1768,7 +1767,9 @@ async def run_visura_immobile(
             )
     if not comune_value:
         comune_value = await find_best_option_match(
-            page, "select[name='denomComune']", comune,
+            page,
+            "select[name='denomComune']",
+            comune,
             provincia_value=provincia_value,
         )
 

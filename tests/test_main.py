@@ -532,7 +532,6 @@ def test_verify_api_key_uses_constant_time_compare(monkeypatch):
     assert len(calls) == 2
 
 
-
 # --- F5: TTL su response_store ---
 
 
@@ -581,12 +580,24 @@ def test_add_request_raises_queue_full_when_full(monkeypatch):
     monkeypatch.setenv("MAX_QUEUE_SIZE", "1")
     service = VisuraService()
     req1 = VisuraRequest(
-        request_id="r1", tipo_catasto="T", provincia="Trieste", comune="TRIESTE",
-        sezione=None, foglio="1", particella="1", subalterno=None,
+        request_id="r1",
+        tipo_catasto="T",
+        provincia="Trieste",
+        comune="TRIESTE",
+        sezione=None,
+        foglio="1",
+        particella="1",
+        subalterno=None,
     )
     req2 = VisuraRequest(
-        request_id="r2", tipo_catasto="T", provincia="Trieste", comune="TRIESTE",
-        sezione=None, foglio="1", particella="2", subalterno=None,
+        request_id="r2",
+        tipo_catasto="T",
+        provincia="Trieste",
+        comune="TRIESTE",
+        sezione=None,
+        foglio="1",
+        particella="2",
+        subalterno=None,
     )
     asyncio.run(service.add_request(req1))
     with pytest.raises(main.QueueFullError):
@@ -602,8 +613,13 @@ def test_richiedi_visura_returns_429_when_queue_full():
 
     service = FullService()
     request = VisuraInput(
-        provincia="Trieste", comune="TRIESTE", foglio="9", particella="166",
-        sezione="_", subalterno=None, tipo_catasto="T",
+        provincia="Trieste",
+        comune="TRIESTE",
+        foglio="9",
+        particella="166",
+        sezione="_",
+        subalterno=None,
+        tipo_catasto="T",
     )
     with pytest.raises(HTTPException) as exc:
         asyncio.run(richiedi_visura(request, service))
@@ -617,8 +633,13 @@ def test_richiedi_intestati_returns_429_when_queue_full():
 
     service = FullService()
     request = VisuraIntestatiInput(
-        provincia="Trieste", comune="TRIESTE", foglio="9", particella="166",
-        sezione="_", subalterno=None, tipo_catasto="T",
+        provincia="Trieste",
+        comune="TRIESTE",
+        foglio="9",
+        particella="166",
+        sezione="_",
+        subalterno=None,
+        tipo_catasto="T",
     )
     with pytest.raises(HTTPException) as exc:
         asyncio.run(richiedi_intestati_immobile(request, service))
@@ -627,11 +648,16 @@ def test_richiedi_intestati_returns_429_when_queue_full():
 
 # -------- P1 #6: codice_belfiore field --------
 
+
 def test_visura_input_accepts_valid_codice_belfiore():
     """H501 (Roma) e' un codice belfiore valido (lettera + 3 cifre)."""
     request = VisuraInput(
-        provincia="Roma", comune="Roma", foglio="9", particella="166",
-        tipo_catasto="T", codice_belfiore="H501",
+        provincia="Roma",
+        comune="Roma",
+        foglio="9",
+        particella="166",
+        tipo_catasto="T",
+        codice_belfiore="H501",
     )
     assert request.codice_belfiore == "H501"
 
@@ -640,45 +666,71 @@ def test_visura_input_rejects_invalid_codice_belfiore_format():
     """Formato non aderente al pattern lettera+3cifre deve fallire."""
     with pytest.raises(PydanticValidationError):
         VisuraInput(
-            provincia="Roma", comune="Roma", foglio="9", particella="166",
-            tipo_catasto="T", codice_belfiore="1234",
+            provincia="Roma",
+            comune="Roma",
+            foglio="9",
+            particella="166",
+            tipo_catasto="T",
+            codice_belfiore="1234",
         )
     with pytest.raises(PydanticValidationError):
         VisuraInput(
-            provincia="Roma", comune="Roma", foglio="9", particella="166",
-            tipo_catasto="T", codice_belfiore="HH501",
+            provincia="Roma",
+            comune="Roma",
+            foglio="9",
+            particella="166",
+            tipo_catasto="T",
+            codice_belfiore="HH501",
         )
 
 
 def test_visura_request_dataclass_carries_codice_belfiore():
     request = VisuraRequest(
-        request_id="req_1", tipo_catasto="T", provincia="Roma", comune="Roma",
-        foglio="9", particella="166", codice_belfiore="H501",
+        request_id="req_1",
+        tipo_catasto="T",
+        provincia="Roma",
+        comune="Roma",
+        foglio="9",
+        particella="166",
+        codice_belfiore="H501",
     )
     assert request.codice_belfiore == "H501"
 
 
 def test_visura_intestati_input_accepts_codice_belfiore():
     request = VisuraIntestatiInput(
-        provincia="Roma", comune="Roma", foglio="9", particella="166",
-        tipo_catasto="T", subalterno=None, codice_belfiore="H501",
+        provincia="Roma",
+        comune="Roma",
+        foglio="9",
+        particella="166",
+        tipo_catasto="T",
+        subalterno=None,
+        codice_belfiore="H501",
     )
     assert request.codice_belfiore == "H501"
 
 
 # -------- Fallback T<->F when first attempt returns NESSUNA CORRISPONDENZA --------
 
+
 def test_visura_input_accepts_fallback_other_catasto_flag():
     request = VisuraInput(
-        provincia="Roma", comune="Roma", foglio="9", particella="166",
-        tipo_catasto="T", fallback_other_catasto=True,
+        provincia="Roma",
+        comune="Roma",
+        foglio="9",
+        particella="166",
+        tipo_catasto="T",
+        fallback_other_catasto=True,
     )
     assert request.fallback_other_catasto is True
 
 
 def test_visura_input_defaults_fallback_to_false():
     request = VisuraInput(
-        provincia="Roma", comune="Roma", foglio="9", particella="166",
+        provincia="Roma",
+        comune="Roma",
+        foglio="9",
+        particella="166",
         tipo_catasto="T",
     )
     assert request.fallback_other_catasto is False
@@ -686,8 +738,13 @@ def test_visura_input_defaults_fallback_to_false():
 
 def test_visura_request_dataclass_carries_fallback_flag():
     request = VisuraRequest(
-        request_id="req_1", tipo_catasto="T", provincia="Roma", comune="Roma",
-        foglio="9", particella="166", fallback_other_catasto=True,
+        request_id="req_1",
+        tipo_catasto="T",
+        provincia="Roma",
+        comune="Roma",
+        foglio="9",
+        particella="166",
+        fallback_other_catasto=True,
     )
     assert request.fallback_other_catasto is True
 
@@ -700,10 +757,14 @@ def test_esegui_visura_falls_back_to_other_catasto_when_not_found(monkeypatch):
     async def fake_run_visura(page, prov, com, sez, foglio, part, tipo, **kwargs):
         calls.append(tipo)
         if tipo == "T":
-            return {"immobili": [], "results": [], "total_results": 0,
-                    "intestati": [], "error": "NESSUNA CORRISPONDENZA TROVATA"}
-        return {"immobili": [{"foo": "bar"}], "results": [{"foo": "bar"}],
-                "total_results": 1, "intestati": []}
+            return {
+                "immobili": [],
+                "results": [],
+                "total_results": 0,
+                "intestati": [],
+                "error": "NESSUNA CORRISPONDENZA TROVATA",
+            }
+        return {"immobili": [{"foo": "bar"}], "results": [{"foo": "bar"}], "total_results": 1, "intestati": []}
 
     monkeypatch.setattr("main.run_visura", fake_run_visura)
 
@@ -713,11 +774,17 @@ def test_esegui_visura_falls_back_to_other_catasto_when_not_found(monkeypatch):
 
     async def _noop():
         return None
+
     bm._ensure_authenticated = _noop  # type: ignore
 
     req = VisuraRequest(
-        request_id="req_test", tipo_catasto="T", provincia="Roma", comune="Roma",
-        foglio="1", particella="1", fallback_other_catasto=True,
+        request_id="req_test",
+        tipo_catasto="T",
+        provincia="Roma",
+        comune="Roma",
+        foglio="1",
+        particella="1",
+        fallback_other_catasto=True,
     )
     response = asyncio.run(bm.esegui_visura(req))
 
@@ -736,8 +803,13 @@ def test_esegui_visura_no_fallback_when_disabled(monkeypatch):
 
     async def fake_run_visura(page, prov, com, sez, foglio, part, tipo, **kwargs):
         calls.append(tipo)
-        return {"immobili": [], "results": [], "total_results": 0,
-                "intestati": [], "error": "NESSUNA CORRISPONDENZA TROVATA"}
+        return {
+            "immobili": [],
+            "results": [],
+            "total_results": 0,
+            "intestati": [],
+            "error": "NESSUNA CORRISPONDENZA TROVATA",
+        }
 
     monkeypatch.setattr("main.run_visura", fake_run_visura)
 
@@ -747,11 +819,17 @@ def test_esegui_visura_no_fallback_when_disabled(monkeypatch):
 
     async def _noop():
         return None
+
     bm._ensure_authenticated = _noop  # type: ignore
 
     req = VisuraRequest(
-        request_id="req_test", tipo_catasto="T", provincia="Roma", comune="Roma",
-        foglio="1", particella="1", fallback_other_catasto=False,
+        request_id="req_test",
+        tipo_catasto="T",
+        provincia="Roma",
+        comune="Roma",
+        foglio="1",
+        particella="1",
+        fallback_other_catasto=False,
     )
     response = asyncio.run(bm.esegui_visura(req))
 
@@ -766,8 +844,7 @@ def test_esegui_visura_no_fallback_when_first_succeeds(monkeypatch):
 
     async def fake_run_visura(page, prov, com, sez, foglio, part, tipo, **kwargs):
         calls.append(tipo)
-        return {"immobili": [{"x": 1}], "results": [{"x": 1}],
-                "total_results": 1, "intestati": []}
+        return {"immobili": [{"x": 1}], "results": [{"x": 1}], "total_results": 1, "intestati": []}
 
     monkeypatch.setattr("main.run_visura", fake_run_visura)
 
@@ -777,14 +854,130 @@ def test_esegui_visura_no_fallback_when_first_succeeds(monkeypatch):
 
     async def _noop():
         return None
+
     bm._ensure_authenticated = _noop  # type: ignore
 
     req = VisuraRequest(
-        request_id="req_test", tipo_catasto="T", provincia="Roma", comune="Roma",
-        foglio="1", particella="1", fallback_other_catasto=True,
+        request_id="req_test",
+        tipo_catasto="T",
+        provincia="Roma",
+        comune="Roma",
+        foglio="1",
+        particella="1",
+        fallback_other_catasto=True,
     )
     response = asyncio.run(bm.esegui_visura(req))
 
     assert calls == ["T"]
     assert response.data["tipo_catasto_used"] == "T"
     assert response.data["fallback_used"] is False
+
+
+# ---------------------------------------------------------------------------
+# Login retry on SPID push timeout (auto-relogin)
+# ---------------------------------------------------------------------------
+
+
+def test_login_retries_on_playwright_timeout(monkeypatch):
+    """Su PlaywrightTimeoutError (push SPID non approvata) il login ritenta
+    fino a LOGIN_MAX_ATTEMPTS e ha successo se l'utente approva al 2 giro."""
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    monkeypatch.setenv("LOGIN_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("LOGIN_RETRY_DELAY_S", "0")
+
+    calls = {"login": 0}
+
+    async def fake_login(page):
+        calls["login"] += 1
+        if calls["login"] < 2:
+            raise PlaywrightTimeoutError("push non approvata")
+        return None
+
+    class FakePage:
+        def is_closed(self):
+            return False
+
+        async def close(self):
+            return None
+
+    class FakeContext:
+        async def new_page(self):
+            return FakePage()
+
+    monkeypatch.setattr("main.login", fake_login)
+    bm = main.BrowserManager()
+    bm.context = FakeContext()
+
+    asyncio.run(bm.login())
+
+    assert calls["login"] == 2
+    assert bm.authenticated is True
+
+
+def test_login_fails_fast_on_non_timeout_error(monkeypatch):
+    """Errori non-timeout (es. credenziali errate -> RuntimeError) NON ritentano."""
+    monkeypatch.setenv("LOGIN_MAX_ATTEMPTS", "5")
+    monkeypatch.setenv("LOGIN_RETRY_DELAY_S", "0")
+
+    calls = {"login": 0}
+
+    async def fake_login(page):
+        calls["login"] += 1
+        raise RuntimeError("credenziali errate")
+
+    class FakePage:
+        def is_closed(self):
+            return False
+
+        async def close(self):
+            return None
+
+    class FakeContext:
+        async def new_page(self):
+            return FakePage()
+
+    monkeypatch.setattr("main.login", fake_login)
+    bm = main.BrowserManager()
+    bm.context = FakeContext()
+
+    with pytest.raises(main.AuthenticationError):
+        asyncio.run(bm.login())
+
+    assert calls["login"] == 1
+    assert bm.authenticated is False
+
+
+def test_login_exhausts_retries_then_fails(monkeypatch):
+    """Se la push non viene mai approvata, dopo N tentativi si solleva AuthenticationError."""
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    monkeypatch.setenv("LOGIN_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("LOGIN_RETRY_DELAY_S", "0")
+
+    calls = {"login": 0}
+
+    async def fake_login(page):
+        calls["login"] += 1
+        raise PlaywrightTimeoutError("push mai approvata")
+
+    class FakePage:
+        def is_closed(self):
+            return False
+
+        async def close(self):
+            return None
+
+    class FakeContext:
+        async def new_page(self):
+            return FakePage()
+
+    monkeypatch.setattr("main.login", fake_login)
+    bm = main.BrowserManager()
+    bm.context = FakeContext()
+
+    with pytest.raises(main.AuthenticationError):
+        asyncio.run(bm.login())
+
+    assert calls["login"] == 3
+    assert bm.authenticated is False
