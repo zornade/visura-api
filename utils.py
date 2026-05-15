@@ -144,8 +144,15 @@ class PageLogger:
             self.base_dir = None
 
     async def log(self, page: Page, step_name: str) -> None:
-        """Salva l'HTML corrente della pagina su disco (no-op se disabilitato)."""
+        """Salva l'HTML corrente della pagina su disco (no-op se disabilitato).
+
+        Disabilitabile via env ``LOG_PAGES=0`` (default: ``1``). Quando off,
+        ritorna immediatamente senza chiamare ``page.content()`` né scrivere
+        su disco — riduce ~0.5-2s/richiesta su success path.
+        """
         self.step += 1
+        if os.getenv("LOG_PAGES", "1") != "1":
+            return
         if self.base_dir is None:
             return
         try:
@@ -420,7 +427,7 @@ async def login(page: Page):
 
         step = "controllo_sessione"
         print("[LOGIN] Attendo caricamento pagina...")
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("domcontentloaded")
         await logger.log(page, "vai_al_servizio")
         print("[LOGIN] Controllo blocco sessione...")
         content = await page.content()
@@ -495,7 +502,7 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
 
         step = "attesa_sister"
         print("[LOGIN] Attendo caricamento portale SISTER...")
-        await page.wait_for_load_state("networkidle", timeout=30000)
+        await page.wait_for_load_state("domcontentloaded", timeout=30000)
         await logger.log(page, "portale_sister")
 
         # Gestione sessioni orfane: ogni CloseSessionsSis chiude UNA sessione
@@ -540,7 +547,7 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
             await page.get_by_role("textbox", name="Utente:").fill(username)
             await page.get_by_role("textbox", name="Password:").fill(password)
             await page.get_by_role("button", name="Accedi").click()
-            await page.wait_for_load_state("networkidle", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
             await logger.log(page, f"portale_sister_retry_{attempts_done}")
 
             content = await page.content()
@@ -797,7 +804,7 @@ async def run_visura(
     # STEP 1: Selezione Ufficio Provinciale
     print("[VISURA] Navigando alla pagina di scelta servizio...")
     await page.goto("https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=60000)
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     print("[VISURA] Pagina caricata")
     await logger.log(page, "scelta_servizio")
 
@@ -858,14 +865,14 @@ async def run_visura(
 
     print("[VISURA] Cliccando Applica...")
     await page.locator("input[type='submit'][value='Applica']").click()
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     print("[VISURA] Applica cliccato, pagina caricata")
     await logger.log(page, "provincia_applicata")
 
     # STEP 2: Ricerca per immobili
     print("[VISURA] Cliccando link Immobile...")
     await page.get_by_role("link", name="Immobile").click()
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     print("[VISURA] Link Immobile cliccato")
     await logger.log(page, "immobile")
 
@@ -928,7 +935,7 @@ async def run_visura(
     if sezione:
         print("[VISURA] Cliccando 'scegli la sezione' per attivare dropdown...")
         await page.locator("input[name='selSezione'][value='scegli la sezione']").click()
-        await page.wait_for_load_state("networkidle", timeout=30000)
+        await page.wait_for_load_state("domcontentloaded", timeout=30000)
         print("[VISURA] Button sezione cliccato, dropdown attivato")
 
         # Prima estrai tutte le opzioni disponibili per debug
@@ -988,7 +995,7 @@ async def run_visura(
     # Clicca Ricerca
     print("[VISURA] Cliccando Ricerca...")
     await page.locator("input[name='scelta'][value='Ricerca']").click()
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     print("[VISURA] Ricerca cliccata")
     await logger.log(page, "ricerca")
 
@@ -999,7 +1006,7 @@ async def run_visura(
         if await conferma_button.count() > 0:
             print("[VISURA] Rilevata richiesta conferma assenza subalterno...")
             await conferma_button.click()
-            await page.wait_for_load_state("networkidle", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
             print("[VISURA] Conferma assenza subalterno cliccata")
             await logger.log(page, "conferma_subalterno")
     except Exception as e:
@@ -1116,7 +1123,7 @@ async def run_visura(
 
         if intestati_button:
             await intestati_button.click()
-            await page.wait_for_load_state("networkidle", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
             print("[VISURA] Intestati cliccato")
             await logger.log(page, "intestati")
 
@@ -1267,7 +1274,7 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
         await page.goto(
             "https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=60000
         )
-        await page.wait_for_load_state("networkidle", timeout=30000)
+        await page.wait_for_load_state("domcontentloaded", timeout=30000)
         print("[SEZIONI] Pagina caricata")
         await logger.log(page, "scelta_servizio")
 
@@ -1300,13 +1307,13 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
 
                 print("[SEZIONI] Cliccando Applica...")
                 await page.locator("input[type='submit'][value='Applica']").click()
-                await page.wait_for_load_state("networkidle", timeout=30000)
+                await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 print("[SEZIONI] Applica cliccato, pagina caricata")
 
                 # Vai alla ricerca immobili (stesso modo di run_visura)
                 print("[SEZIONI] Cliccando link Immobile...")
                 await page.get_by_role("link", name="Immobile").click()
-                await page.wait_for_load_state("networkidle", timeout=30000)
+                await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 print("[SEZIONI] Link Immobile cliccato")
 
                 # Seleziona tipo catasto (stesso modo di run_visura)
@@ -1344,7 +1351,7 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
                         # Attiva selezione sezione (ESATTO come in run_visura)
                         print("[SEZIONI] Cliccando 'scegli la sezione' per attivare dropdown...")
                         await page.locator("input[name='selSezione'][value='scegli la sezione']").click()
-                        await page.wait_for_load_state("networkidle", timeout=30000)
+                        await page.wait_for_load_state("domcontentloaded", timeout=30000)
                         print("[SEZIONI] Button sezione cliccato, dropdown attivato")
 
                         # Estrai le sezioni per questo comune (stesso modo di run_visura)
@@ -1428,7 +1435,7 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
                 await page.goto(
                     "https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=60000
                 )
-                await page.wait_for_load_state("networkidle", timeout=30000)
+                await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 print("[SEZIONI] Tornato alla pagina principale")
 
             except Exception as e:
@@ -1482,7 +1489,7 @@ async def run_visura_immobile(
     # STEP 1: Selezione Ufficio Provinciale
     print("[VISURA_IMMOBILE] Navigando alla pagina di scelta servizio...")
     await page.goto("https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=60000)
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     print("[VISURA_IMMOBILE] Pagina caricata")
     await logger.log(page, "scelta_servizio")
 
@@ -1502,13 +1509,13 @@ async def run_visura_immobile(
     await page.locator("select[name='listacom']").select_option(provincia_value)
     print("[VISURA_IMMOBILE] Cliccando Applica...")
     await page.locator("input[type='submit'][value='Applica']").click()
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     await logger.log(page, "provincia_applicata")
 
     # STEP 2: Ricerca per immobili
     print("[VISURA_IMMOBILE] Cliccando link Immobile...")
     await page.get_by_role("link", name="Immobile").click()
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     await logger.log(page, "immobile")
 
     # STEP 2.1: Seleziona tipo catasto FABBRICATI (F)
@@ -1540,7 +1547,7 @@ async def run_visura_immobile(
     if sezione:
         print("[VISURA_IMMOBILE] Cliccando 'scegli la sezione' per attivare dropdown...")
         await page.locator("input[name='selSezione'][value='scegli la sezione']").click()
-        await page.wait_for_load_state("networkidle", timeout=30000)
+        await page.wait_for_load_state("domcontentloaded", timeout=30000)
 
         # Controlla se ci sono sezioni disponibili
         options = await page.locator("select[name='sezione'] option").all()
@@ -1584,7 +1591,7 @@ async def run_visura_immobile(
     # Clicca Ricerca
     print("[VISURA_IMMOBILE] Cliccando Ricerca...")
     await page.locator("input[name='scelta'][value='Ricerca']").click()
-    await page.wait_for_load_state("networkidle", timeout=30000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
     await logger.log(page, "ricerca")
 
     # STEP 3: Gestisci conferma assenza subalterno (se necessario)
@@ -1593,7 +1600,7 @@ async def run_visura_immobile(
         if await conferma_button.count() > 0:
             print("[VISURA_IMMOBILE] Rilevata richiesta conferma assenza subalterno...")
             await conferma_button.click()
-            await page.wait_for_load_state("networkidle", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
             await logger.log(page, "conferma_subalterno")
     except Exception as e:
         print(f"[VISURA_IMMOBILE] Errore o non necessaria conferma subalterno: {e}")
@@ -1643,7 +1650,7 @@ async def run_visura_immobile(
 
         if intestati_button:
             await intestati_button.click()
-            await page.wait_for_load_state("networkidle", timeout=30000)
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
             print("[VISURA_IMMOBILE] Intestati cliccato")
             await logger.log(page, "intestati")
 

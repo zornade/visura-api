@@ -255,7 +255,7 @@ class BrowserManager:
             await self.auth_page.goto(
                 "https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=30000
             )
-            await self.auth_page.wait_for_load_state("networkidle", timeout=15000)
+            await self.auth_page.wait_for_load_state("domcontentloaded", timeout=15000)
 
             try:
                 provincia_options = await self.auth_page.locator("select[name='listacom'] option").count()
@@ -296,7 +296,7 @@ class BrowserManager:
                 await self.auth_page.goto(
                     "https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=30000
                 )
-                await self.auth_page.wait_for_load_state("networkidle", timeout=15000)
+                await self.auth_page.wait_for_load_state("domcontentloaded", timeout=15000)
 
             provincia_options = await self.auth_page.locator("select[name='listacom'] option").count()
             if provincia_options <= 1:
@@ -324,7 +324,7 @@ class BrowserManager:
             await self.auth_page.goto(
                 "https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=30000
             )
-            await self.auth_page.wait_for_load_state("networkidle", timeout=15000)
+            await self.auth_page.wait_for_load_state("domcontentloaded", timeout=15000)
             await recovery_logger.log(self.auth_page, "goto_scelta_servizio")
 
             current_url = self.auth_page.url
@@ -645,8 +645,10 @@ class VisuraService:
 
                 self.request_queue.task_done()
 
-                # Pausa tra le richieste per non sovraccaricare SISTER
-                await asyncio.sleep(2)
+                # Breve yield al loop per evitare burst su SISTER; il rate-limit
+                # vero è gestito dal token bucket HTTP (P1 #7). Ridotto da 2s
+                # a 0.1s per non aggiungere 2s di latenza inutile su ogni job.
+                await asyncio.sleep(0.1)
 
             except Exception as e:
                 logger.error(f"Errore nel processare richieste: {e}")

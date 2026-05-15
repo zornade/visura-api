@@ -363,6 +363,7 @@ def test_page_logger_log_skips_closed_page(monkeypatch, tmp_path):
 
 
 def test_page_logger_log_writes_html_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOG_PAGES", "1")
     monkeypatch.setattr(utils, "PAGES_LOG_DIR", str(tmp_path))
     utils.PageLogger.reset_session()
     logger = utils.PageLogger("open")
@@ -372,6 +373,18 @@ def test_page_logger_log_writes_html_file(monkeypatch, tmp_path):
     files = os.listdir(logger.base_dir)
     assert len(files) == 1
     assert files[0].startswith("01_step_with_spaces")
+
+
+def test_page_logger_log_disabled_by_env(monkeypatch, tmp_path):
+    """LOG_PAGES=0 deve trasformare log() in no-op (gating audit 2026-05-15)."""
+    monkeypatch.setenv("LOG_PAGES", "0")
+    monkeypatch.setattr(utils, "PAGES_LOG_DIR", str(tmp_path))
+    utils.PageLogger.reset_session()
+    logger = utils.PageLogger("open")
+
+    asyncio.run(logger.log(_FakePageOpen(), "step"))
+
+    assert os.listdir(logger.base_dir) == []
 
 
 def test_resolve_pages_log_dir_uses_env_var_when_set(monkeypatch, tmp_path):
