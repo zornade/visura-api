@@ -200,6 +200,31 @@ def test_find_best_option_match_catastal_alias_pesaro_e_urbino_to_pesaro():
     assert result == "PESARO"
 
 
+def test_find_best_option_match_catastal_alias_valle_aosta_bilingue_to_aosta():
+    """ISTAT `Valle d'Aosta/Vallée d'Aoste` (bilingue) → SISTER `AOSTA Territorio`."""
+    page = _FakePageForMatch([
+        _FakeOption("AOSTA", "AOSTA Territorio"),
+        _FakeOption("ALESSANDRIA", "ALESSANDRIA Territorio"),
+    ])
+    result = asyncio.run(
+        utils.find_best_option_match(page, "select[name='listacom']", "Valle d'Aosta/Vallée d'Aoste")
+    )
+    assert result == "AOSTA"
+
+
+def test_find_best_option_match_catastal_alias_monza_to_milano():
+    """ISTAT `Monza e della Brianza`: SISTER non la espone, i suoi comuni sono
+    catastalmente sotto MILANO Territorio (storico pre-2009)."""
+    page = _FakePageForMatch([
+        _FakeOption("MILANO", "MILANO Territorio"),
+        _FakeOption("MANTOVA", "MANTOVA Territorio"),
+    ])
+    result = asyncio.run(
+        utils.find_best_option_match(page, "select[name='listacom']", "Monza e della Brianza")
+    )
+    assert result == "MILANO"
+
+
 def test_find_best_option_match_comune_with_grave_accent():
     """Caso F-NEW2: comune `Alì` (con accento grave) deve matchare `ALI'` / `ALI`."""
     page = _FakePageForMatch([
@@ -208,6 +233,17 @@ def test_find_best_option_match_comune_with_grave_accent():
     ])
     result = asyncio.run(utils.find_best_option_match(page, "select[name='denomComune']", "Alì"))
     assert result == "ALI'"
+
+
+def test_unsupported_provinces_sister_trento_bolzano_keys_present():
+    """Trento e Bolzano sono province autonome con Catasto Tavolare, non
+    disponibili su SISTER. Le chiavi devono essere normalizzate con
+    _normalize_for_match per essere risolte a tempo di run_visura."""
+    assert "trento" in utils._UNSUPPORTED_PROVINCES_SISTER
+    assert "bolzano" in utils._UNSUPPORTED_PROVINCES_SISTER
+    # Le ragioni contengono "Tavolare" → utile per messaggi diagnostici.
+    assert "Tavolare" in utils._UNSUPPORTED_PROVINCES_SISTER["trento"]
+    assert "Tavolare" in utils._UNSUPPORTED_PROVINCES_SISTER["bolzano"]
 
 
 def test_login_raises_when_missing_required_env(monkeypatch):

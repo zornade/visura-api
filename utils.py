@@ -564,7 +564,11 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
 # ``_normalize_for_match``. Estendere qui se emergono nuovi casi.
 _CATASTAL_PROVINCE_ALIASES = {
     "verbano cusio ossola": "verbania",
-    "monza e della brianza": "monza brianza",
+    # ISTAT "Monza e della Brianza" (istituita 2009): SISTER non la espone come
+    # ufficio provinciale catastale separato — i comuni della Brianza restano
+    # catastalmente sotto "MILANO Territorio" (confermato bulk-test
+    # 2026-05-15, p.es. Misinto, Lissone). Vedi anche _UNSUPPORTED_PROVINCES.
+    "monza e della brianza": "milano",
     "forli cesena": "forli",
     # ISTAT usa "Reggio nell'Emilia", SISTER espone solo "REGGIO EMILIA"
     # (confermato sperimentalmente, vedi AUDIT_REPORT_2026-05-15.md)
@@ -575,6 +579,33 @@ _CATASTAL_PROVINCE_ALIASES = {
     "sud sardegna": "cagliari",
     # ISTAT usa "Pesaro e Urbino", SISTER espone solo "PESARO Territorio".
     "pesaro e urbino": "pesaro",
+    # ISTAT "Valle d'Aosta/Vallée d'Aoste" (forma bilingue): SISTER ha
+    # solo "AOSTA Territorio". Scoperto nel bulk-test 97 particelle del
+    # 2026-05-15 (Pont-Saint-Martin, Arvier, Champorcher).
+    "valle d aosta vallee d aoste": "aosta",
+    "valle d aosta": "aosta",
+    "vallee d aoste": "aosta",
+}
+
+
+# Province che SISTER NON espone perché il catasto è gestito da un sistema
+# regionale separato (Sistema Tavolare austriaco) o perché l'ufficio non è
+# stato mai disaggregato. Le richieste per queste province falliscono in modo
+# esplicito con un messaggio attionable, invece di esaurire il timeout sul
+# matching della dropdown.
+#
+# Chiavi normalizzate con ``_normalize_for_match``. Estendere se emergono
+# nuovi casi confermati sperimentalmente.
+_UNSUPPORTED_PROVINCES_SISTER = {
+    # Provincia Autonoma di Trento — Catasto Tavolare (Libro Fondiario)
+    "trento": "Provincia Autonoma di Trento: catasto gestito dal Sistema "
+              "Tavolare (Libro Fondiario), non disponibile su SISTER.",
+    # Provincia Autonoma di Bolzano / Südtirol — Catasto Tavolare
+    "bolzano": "Provincia Autonoma di Bolzano: catasto gestito dal Sistema "
+               "Tavolare (Libro Fondiario), non disponibile su SISTER.",
+    "bolzano bozen": "Provincia Autonoma di Bolzano: catasto gestito dal "
+                     "Sistema Tavolare (Libro Fondiario), non disponibile "
+                     "su SISTER.",
 }
 
 
@@ -752,6 +783,13 @@ async def run_visura(
     print(
         f"[VISURA] Inizio visura: provincia={provincia}, comune={comune}{sezione_info}, foglio={foglio}, particella={particella}{subalterno_info}, tipo_catasto={tipo_catasto}"
     )
+
+    # Fail-fast su province non supportate (Trento/Bolzano: Catasto Tavolare).
+    # Evita di navigare SISTER inutilmente e restituisce un errore actionable.
+    provincia_norm = _normalize_for_match(provincia)
+    unsupported_reason = _UNSUPPORTED_PROVINCES_SISTER.get(provincia_norm)
+    if unsupported_reason:
+        raise Exception(unsupported_reason)
 
     # Non creare una nuova pagina, usa quella esistente
     print("[VISURA] Utilizzando pagina di autenticazione esistente")
@@ -1434,6 +1472,12 @@ async def run_visura_immobile(
 
     if not subalterno:
         raise ValueError("Il subalterno è obbligatorio per le visure per immobile specifico")
+
+    # Fail-fast su province non supportate (Trento/Bolzano: Catasto Tavolare).
+    provincia_norm = _normalize_for_match(provincia)
+    unsupported_reason = _UNSUPPORTED_PROVINCES_SISTER.get(provincia_norm)
+    if unsupported_reason:
+        raise Exception(unsupported_reason)
 
     # STEP 1: Selezione Ufficio Provinciale
     print("[VISURA_IMMOBILE] Navigando alla pagina di scelta servizio...")
