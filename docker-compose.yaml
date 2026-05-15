@@ -12,10 +12,17 @@ services:
       - ./logs:/app/logs:rw
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # `curl` non è installato nell'immagine: usiamo Python che è sempre
+      # presente. Codice di uscita 0 solo se /health risponde 200.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys;\nr=urllib.request.urlopen('http://localhost:8000/health',timeout=5);\nsys.exit(0 if r.status==200 else 1)"
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 120s
     # Per debugging, rimuovi in produzione
     stdin_open: true
     tty: true

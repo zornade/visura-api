@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+import unicodedata
 from datetime import datetime
 from typing import Optional
 
@@ -218,6 +219,30 @@ async def _login_sielte(page: Page, logger: PageLogger, username: str, password:
         await logger.log(page, "notifica_push")
 
         step = "autorizza"
+        # Fail-fast: il pulsante 'Autorizza' appare solo se username/password
+        # sono corretti e l'autenticazione e' arrivata allo step push. Se le
+        # credenziali sono sbagliate la pagina rimane sulla form di login con
+        # un messaggio d'errore: in tal caso vogliamo fallire entro pochi
+        # secondi invece di aspettare 120s. Soglia configurabile via env
+        # ``LOGIN_AUTORIZZA_APPEAR_TIMEOUT_S`` (default 15).
+        appear_timeout_s = int(os.getenv("LOGIN_AUTORIZZA_APPEAR_TIMEOUT_S", "15"))
+        print(
+            f"[LOGIN] Attendo pulsante 'Autorizza' (max {appear_timeout_s}s) — "
+            f"se non appare = credenziali probabilmente errate"
+        )
+        try:
+            await page.get_by_role("button", name="Autorizza").wait_for(
+                state="visible", timeout=appear_timeout_s * 1000
+            )
+        except PlaywrightTimeoutError as e:
+            current_url = page.url
+            await logger.log(page, f"ERRORE_sielte_{step}_autorizza_non_apparso")
+            raise RuntimeError(
+                f"Login Sielte fallito: pulsante 'Autorizza' non apparso entro "
+                f"{appear_timeout_s}s. Credenziali probabilmente errate o flusso "
+                f"Sielte modificato. URL corrente: {current_url}"
+            ) from e
+
         print("[LOGIN] Clicco 'Autorizza'... (attendo conferma notifica push, timeout 120s)")
         await page.get_by_role("button", name="Autorizza").click(timeout=120000)
         await logger.log(page, "autorizza")
@@ -258,6 +283,33 @@ async def _login_poste(page: Page, logger: PageLogger, username: str, password: 
         await logger.log(page, "avanti")
 
         step = "attesa_app"
+        # Fail-fast: dopo 'Avanti' PosteID transita a uno step di approvazione
+        # push e poi reindirizza al dominio agenziaentrate. Se username/password
+        # sono sbagliate la pagina mostra subito un errore senza mai partire la
+        # push; aspettare 120s prima di accorgersene non e' utile. Diamo prima
+        # ``LOGIN_POSTE_PUSH_APPEAR_TIMEOUT_S`` per il cambio di URL/stato e
+        # poi il timeout lungo per l'approvazione vera e propria.
+        appear_timeout_s = int(os.getenv("LOGIN_POSTE_PUSH_APPEAR_TIMEOUT_S", "15"))
+        print(
+            f"[LOGIN] Attendo transizione push PosteID (max {appear_timeout_s}s) — "
+            f"se rimane sulla form = credenziali probabilmente errate"
+        )
+        try:
+            # Attendiamo che l'URL CAMBI dalla pagina di login. wait_for_url
+            # con un pattern wildcard fallisce se restiamo sullo stesso URL.
+            await page.wait_for_function(
+                "url => !window.location.href.includes('login') && !window.location.href.includes('Login')",
+                timeout=appear_timeout_s * 1000,
+            )
+        except PlaywrightTimeoutError as e:
+            current_url = page.url
+            await logger.log(page, f"ERRORE_poste_{step}_push_non_partita")
+            raise RuntimeError(
+                f"Login PosteID fallito: la pagina non e' uscita dal form di login "
+                f"entro {appear_timeout_s}s. Credenziali probabilmente errate o "
+                f"flusso PosteID modificato. URL corrente: {current_url}"
+            ) from e
+
         print("[LOGIN] Attendo approvazione sull'app PosteID (timeout 120s)...")
         # PosteID reindirizza automaticamente dopo l'approvazione sull'app:
         # aspettiamo che il browser torni sul dominio agenziaentrate.
@@ -434,23 +486,37 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
 
         # Gestione sessioni orfane: ogni CloseSessionsSis chiude UNA sessione
         # stale. Dopo molti riavvii possono accumularsi più sessioni, perciò
-        # proviamo fino a 10 volte prima di alzare l'eccezione.
-        for attempt in range(1, 11):
-            content = await page.content()
-            url = page.url
-            if "Utente gia' in sessione" not in content and "error_locked.jsp" not in url:
-                break
+        # proviamo fino a MAX_CLOSE_ATTEMPTS volte prima di alzare l'eccezione.
+        # NB: la struttura `for/else` precedente aveva un off-by-one: dopo
+        # l'N-esimo close+retry il loop terminava senza ricontrollare se la
+        # sessione era stata liberata, quindi sollevava errore anche quando in
+        # realtà l'ultimo tentativo era riuscito. Ora il check è esplicito sia
+        # in testa al loop che dopo l'ultimo close.
+        MAX_CLOSE_ATTEMPTS = 10
 
-            print(f"[LOGIN] Sessione orfana rilevata (tentativo {attempt}/10) — chiudo e riprovo...")
-            step = f"close_session_{attempt}"
+        def _is_orphan(content: str, current_url: str) -> bool:
+            return (
+                "Utente gia' in sessione" in content
+                or "error_locked.jsp" in current_url
+            )
+
+        content = await page.content()
+        url = page.url
+        attempts_done = 0
+        while _is_orphan(content, url) and attempts_done < MAX_CLOSE_ATTEMPTS:
+            attempts_done += 1
+            print(
+                f"[LOGIN] Sessione orfana rilevata (tentativo {attempts_done}/{MAX_CLOSE_ATTEMPTS}) — chiudo e riprovo..."
+            )
+            step = f"close_session_{attempts_done}"
             await page.goto(
                 "https://sister3.agenziaentrate.gov.it/Servizi/CloseSessionsSis",
                 timeout=30000,
             )
             await page.wait_for_load_state("domcontentloaded", timeout=30000)
-            await logger.log(page, f"close_session_{attempt}")
+            await logger.log(page, f"close_session_{attempts_done}")
 
-            step = f"sister_tab_retry_{attempt}"
+            step = f"sister_tab_retry_{attempts_done}"
             await page.goto(
                 "https://iampe.agenziaentrate.gov.it/sam/UI/Login?realm=/agenziaentrate",
                 timeout=30000,
@@ -461,10 +527,16 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
             await page.get_by_role("textbox", name="Password:").fill(password)
             await page.get_by_role("button", name="Accedi").click()
             await page.wait_for_load_state("networkidle", timeout=30000)
-            await logger.log(page, f"portale_sister_retry_{attempt}")
-        else:
+            await logger.log(page, f"portale_sister_retry_{attempts_done}")
+
+            content = await page.content()
+            url = page.url
+
+        if _is_orphan(content, url):
             print("[LOGIN][ERRORE] Troppe sessioni orfane, impossibile liberare la sessione.")
-            raise Exception("Utente già in sessione su un'altra postazione (max 10 tentativi raggiunto)")
+            raise Exception(
+                f"Utente già in sessione su un'altra postazione (max {MAX_CLOSE_ATTEMPTS} tentativi raggiunto)"
+            )
 
         print("[LOGIN] Login SISTER completato.")
 
@@ -473,13 +545,99 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
         raise
 
 
+# Mappa di alias catastali per province con nome ISTAT divergente dal nome
+# usato da SISTER. Chiavi e valori sono già normalizzati con
+# ``_normalize_for_match``. Estendere qui se emergono nuovi casi.
+_CATASTAL_PROVINCE_ALIASES = {
+    "verbano cusio ossola": "verbania",
+    "monza e della brianza": "monza brianza",
+    "forli cesena": "forli",
+    # ISTAT usa "Reggio nell'Emilia", SISTER espone solo "REGGIO EMILIA"
+    # (confermato sperimentalmente, vedi AUDIT_REPORT_2026-05-15.md)
+    "reggio nell emilia": "reggio emilia",
+}
+
+
+def _normalize_for_match(value: str) -> str:
+    """Normalizza una stringa per matching tollerante in ``find_best_option_match``.
+
+    Operazioni applicate (in ordine):
+      1. ``NFKD`` + drop dei combining marks (rimuove accenti à→a, ù→u, ...);
+      2. apostrofi tipografici ``’`` e backtick mappati ad ASCII;
+      3. apostrofi/punteggiatura/separatori (``-``, ``_``, ``/``, ``'``, ...)
+         convertiti in spazio;
+      4. lowercase;
+      5. rimozione del suffisso `` territorio`` (SISTER lo aggiunge alle
+         province, es. ``ALESSANDRIA Territorio``);
+      6. collasso whitespace multipli e strip.
+    """
+    if not value:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", value)
+    no_marks = "".join(ch for ch in nfkd if not unicodedata.combining(ch))
+    no_marks = no_marks.replace("’", "'").replace("`", "'")
+    cleaned = re.sub(r"[-_/'.,]+", " ", no_marks)
+    lowered = cleaned.lower()
+    lowered = re.sub(r"\bterritorio\b", " ", lowered)
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: str) -> Optional[str]:
+    """Trova un'option SISTER il cui ``value`` inizia con ``{codice_belfiore}#``.
+
+    Le option di ``select[name='denomComune']`` in SISTER hanno valore nella
+    forma ``CODICEBELFIORE#NOME#0#0`` (es. ``A737#BELFIORE#0#0``,
+    ``H501#ROMA#0#0``). Quando il consumer conosce il codice belfiore catastale
+    (es. da ``parcels.administrativeunit``) può evitare il match stringa sul
+    nome del comune — più robusto perché il codice belfiore è una chiave
+    catastale stabile, mentre i nomi soffrono di varianti ortografiche
+    (apostrofi tipografici, accenti, suffissi).
+
+    Ritorna il ``value`` dell'option oppure ``None`` se nessuna option
+    nel ``select`` ha quel prefisso.
+    """
+    if not codice_belfiore:
+        return None
+    cb = codice_belfiore.strip().upper()
+    if not cb:
+        return None
+    prefix = f"{cb}#"
+    options = await page.locator(f"{selector} option").all()
+    print(f"[MATCH_BELFIORE] Cerco codice belfiore '{cb}' tra {len(options)} option")
+    for option in options:
+        value = await option.get_attribute("value")
+        if value and value.upper().startswith(prefix):
+            text = await option.inner_text()
+            print(f"[MATCH_BELFIORE] Match: '{text}' -> '{value}'")
+            return value
+    print(f"[MATCH_BELFIORE] Nessuna option con prefisso '{prefix}'")
+    return None
+
+
 async def find_best_option_match(page, selector, search_text):
-    """Trova l'opzione che meglio corrisponde al testo cercato"""
+    """Trova l'opzione che meglio corrisponde al testo cercato.
+
+    Il matching è tollerante a:
+      - case (uppercase/lowercase),
+      - accenti (à/è/ì/ò/ù → a/e/i/o/u),
+      - apostrofi tipografici vs ASCII (’ vs '),
+      - separatori (-, _, /) trattati come spazi,
+      - suffissi specifici di SISTER come " Territorio" sulle province,
+      - alias catastali per province con nome divergente da ISTAT
+        (es. "Verbano-Cusio-Ossola" → "Verbania").
+
+    L'ordine di priorità del matching è: exact value → exact text → starts-with
+    → contains → match dell'alias catastale. Restituisce il ``value``
+    dell'option scelta, oppure ``None`` se nessuna opzione è plausibile.
+    """
     options = await page.locator(f"{selector} option").all()
     best_match = None
     best_score = 0
 
     print(f"[MATCH] Cerco '{search_text}' tra {len(options)} opzioni")
+
+    search_norm = _normalize_for_match(search_text)
+    search_alias = _CATASTAL_PROVINCE_ALIASES.get(search_norm)
 
     for option in options:
         value = await option.get_attribute("value")
@@ -492,40 +650,60 @@ async def find_best_option_match(page, selector, search_text):
         search_upper = search_text.upper()
         text_upper = text.upper()
         value_upper = value.upper()
+        text_norm = _normalize_for_match(text)
+        value_norm = _normalize_for_match(value)
 
         # PRIORITÀ 1: Exact match del valore (per sezioni come P, Q, etc.)
-        if search_upper == value_upper:
+        if search_upper == value_upper or search_norm == value_norm:
             print(f"[MATCH] Exact value match trovato: '{text}' -> '{value}'")
             return value
 
-        # PRIORITÀ 2: Exact match del testo
-        if search_upper == text_upper:
+        # PRIORITÀ 2: Exact match del testo (incluso match normalizzato senza
+        # accenti/apostrofi/suffisso " Territorio")
+        if search_upper == text_upper or search_norm == text_norm:
             print(f"[MATCH] Exact text match trovato: '{text}' -> '{value}'")
             return value
 
         # PRIORITÀ 3: Match che inizia con il testo cercato
-        if text_upper.startswith(search_upper):
-            score = len(search_text) / len(text)
+        if text_upper.startswith(search_upper) or text_norm.startswith(search_norm):
+            score = len(search_norm) / max(len(text_norm), 1)
             if score > best_score:
                 best_score = score
                 best_match = value
                 print(f"[MATCH] Candidato (starts with): '{text}' -> '{value}' (score: {score:.2f})")
+            continue
 
         # PRIORITÀ 4: Value che inizia con il testo cercato
-        elif value_upper.startswith(search_upper):
-            score = len(search_text) / len(value) * 0.9  # Leggera penalità
+        if value_upper.startswith(search_upper) or value_norm.startswith(search_norm):
+            score = len(search_norm) / max(len(value_norm), 1) * 0.9
             if score > best_score:
                 best_score = score
                 best_match = value
                 print(f"[MATCH] Candidato (value starts with): '{text}' -> '{value}' (score: {score:.2f})")
+            continue
 
         # PRIORITÀ 5: Match che contiene il testo cercato
-        elif search_upper in text_upper:
-            score = len(search_text) / len(text) * 0.6  # Maggiore penalità per evitare falsi positivi
+        if search_upper in text_upper or (search_norm and search_norm in text_norm):
+            score = len(search_norm) / max(len(text_norm), 1) * 0.6
             if score > best_score:
                 best_score = score
                 best_match = value
                 print(f"[MATCH] Candidato (contains): '{text}' -> '{value}' (score: {score:.2f})")
+            continue
+
+        # PRIORITÀ 6: Alias catastale (es. Verbano-Cusio-Ossola → Verbania)
+        if search_alias and (
+            text_norm == search_alias
+            or text_norm.startswith(search_alias)
+            or search_alias in text_norm
+        ):
+            score = len(search_alias) / max(len(text_norm), 1) * 0.5
+            if score > best_score:
+                best_score = score
+                best_match = value
+                print(
+                    f"[MATCH] Candidato (alias '{search_alias}'): '{text}' -> '{value}' (score: {score:.2f})"
+                )
 
     if best_match:
         print(f"[MATCH] Migliore match trovato: '{best_match}' (score: {best_score:.2f})")
@@ -545,6 +723,7 @@ async def run_visura(
     tipo_catasto="T",
     extract_intestati=True,
     subalterno=None,
+    codice_belfiore: Optional[str] = None,
 ):
     time0 = time.time()
     logger = PageLogger("visura")
@@ -657,7 +836,23 @@ async def run_visura(
         f"[VISURA] Comuni disponibili: {', '.join(available_comuni[:10])}{'...' if len(available_comuni) > 10 else ''}"
     )
 
-    comune_value = await find_best_option_match(page, "select[name='denomComune']", comune)
+    # Quando il chiamante fornisce il codice belfiore (es. da `parcels.administrativeunit`)
+    # bypassiamo il match-by-name e selezioniamo l'option per prefisso di `value`
+    # (`CODICEBELFIORE#…`), che è più robusto per i comuni con nomi ambigui o
+    # varianti ortografiche divergenti tra ISTAT e SISTER.
+    comune_value = None
+    if codice_belfiore:
+        comune_value = await find_option_by_codice_belfiore(
+            page, "select[name='denomComune']", codice_belfiore
+        )
+        if not comune_value:
+            print(
+                f"[VISURA] codice_belfiore='{codice_belfiore}' non trovato nelle option, "
+                f"fallback al match per nome '{comune}'"
+            )
+
+    if not comune_value:
+        comune_value = await find_best_option_match(page, "select[name='denomComune']", comune)
 
     if not comune_value:
         raise Exception(
@@ -1191,7 +1386,8 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
 
 
 async def run_visura_immobile(
-    page, provincia="Trieste", comune="Trieste", sezione=None, foglio="9", particella="166", subalterno=None
+    page, provincia="Trieste", comune="Trieste", sezione=None, foglio="9", particella="166", subalterno=None,
+    codice_belfiore: Optional[str] = None,
 ):
     """
     Esegue una visura catastale per un immobile specifico (solo per fabbricati con subalterno).
@@ -1257,7 +1453,18 @@ async def run_visura_immobile(
 
     # Trova e seleziona il comune
     print(f"[VISURA_IMMOBILE] Cercando comune: {comune}")
-    comune_value = await find_best_option_match(page, "select[name='denomComune']", comune)
+    comune_value = None
+    if codice_belfiore:
+        comune_value = await find_option_by_codice_belfiore(
+            page, "select[name='denomComune']", codice_belfiore
+        )
+        if not comune_value:
+            print(
+                f"[VISURA_IMMOBILE] codice_belfiore='{codice_belfiore}' non trovato, "
+                f"fallback al match per nome '{comune}'"
+            )
+    if not comune_value:
+        comune_value = await find_best_option_match(page, "select[name='denomComune']", comune)
 
     if not comune_value:
         raise Exception(f"Comune '{comune}' non trovato nelle opzioni disponibili")

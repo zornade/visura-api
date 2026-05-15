@@ -474,3 +474,193 @@ def test_verify_api_key_accepts_correct_header_when_enabled(monkeypatch):
     monkeypatch.setenv("API_KEY", "secret-token")
     result = asyncio.run(main.verify_api_key(api_key="secret-token"))
     assert result == "secret-token"
+
+
+# --- F4: verify_api_key_strict (fail-closed per endpoint amministrativi) ---
+
+
+def test_verify_api_key_strict_rejects_when_env_not_set(monkeypatch):
+    """Senza API_KEY in env, lo strict mode risponde 503 anche con header valido."""
+    monkeypatch.delenv("API_KEY", raising=False)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.verify_api_key_strict(api_key="anything"))
+    assert exc.value.status_code == 503
+
+
+def test_verify_api_key_strict_rejects_when_env_not_set_and_no_header(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.verify_api_key_strict(api_key=None))
+    assert exc.value.status_code == 503
+
+
+def test_verify_api_key_strict_rejects_missing_header(monkeypatch):
+    monkeypatch.setenv("API_KEY", "secret-token")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.verify_api_key_strict(api_key=None))
+    assert exc.value.status_code == 403
+
+
+def test_verify_api_key_strict_rejects_wrong_header(monkeypatch):
+    monkeypatch.setenv("API_KEY", "secret-token")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.verify_api_key_strict(api_key="wrong-token"))
+    assert exc.value.status_code == 403
+
+
+def test_verify_api_key_strict_accepts_correct_header(monkeypatch):
+    monkeypatch.setenv("API_KEY", "secret-token")
+    result = asyncio.run(main.verify_api_key_strict(api_key="secret-token"))
+    assert result == "secret-token"
+
+
+def test_verify_api_key_uses_constant_time_compare(monkeypatch):
+    """F3: la verifica deve usare ``secrets.compare_digest`` (resistente a timing attack)."""
+    import secrets as _secrets
+
+    monkeypatch.setenv("API_KEY", "secret-token")
+    calls = []
+    original = _secrets.compare_digest
+
+    def _spy(a, b):
+        calls.append((a, b))
+        return original(a, b)
+
+    monkeypatch.setattr(main.secrets, "compare_digest", _spy)
+    asyncio.run(main.verify_api_key(api_key="secret-token"))
+    asyncio.run(main.verify_api_key_strict(api_key="secret-token"))
+    assert len(calls) == 2
+
+
+
+# --- F5: TTL su response_store ---
+
+
+def test_response_store_is_ttl_cache(monkeypatch):
+    """`VisuraService.response_store` deve essere una TTLCache (fix F5)."""
+    from cachetools import TTLCache
+
+    monkeypatch.setenv("RESPONSE_TTL_SECONDS", "60")
+    monkeypatch.setenv("RESPONSE_STORE_MAXSIZE", "5")
+    monkeypatch.setenv("MAX_QUEUE_SIZE", "10")
+    service = VisuraService()
+    try:
+        assert isinstance(service.response_store, TTLCache)
+        assert service.response_store.ttl == 60
+        assert service.response_store.maxsize == 5
+    finally:
+        # Evita warning su asyncio.Queue
+        pass
+
+
+def test_response_store_evicts_after_ttl():
+    """Le entry vengono rimosse dopo che il TTL è scaduto.
+
+    Smoke test contro l'implementazione reale di TTLCache: usiamo un TTL di
+    0 secondi così la prima ``expire()`` rimuove sempre l'entry.
+    """
+    from cachetools import TTLCache
+
+    cache = TTLCache(maxsize=10, ttl=0)
+    cache["a"] = "x"
+    cache.expire()
+    assert cache.get("a") is None
+
+
+# --- F10: rate-limit coda → HTTP 429 ---
+
+
+def test_request_queue_uses_max_queue_size_env(monkeypatch):
+    monkeypatch.setenv("MAX_QUEUE_SIZE", "7")
+    service = VisuraService()
+    assert service.request_queue.maxsize == 7
+
+
+def test_add_request_raises_queue_full_when_full(monkeypatch):
+    """Coda piena → QueueFullError dal service layer."""
+    monkeypatch.setenv("MAX_QUEUE_SIZE", "1")
+    service = VisuraService()
+    req1 = VisuraRequest(
+        request_id="r1", tipo_catasto="T", provincia="Trieste", comune="TRIESTE",
+        sezione=None, foglio="1", particella="1", subalterno=None,
+    )
+    req2 = VisuraRequest(
+        request_id="r2", tipo_catasto="T", provincia="Trieste", comune="TRIESTE",
+        sezione=None, foglio="1", particella="2", subalterno=None,
+    )
+    asyncio.run(service.add_request(req1))
+    with pytest.raises(main.QueueFullError):
+        asyncio.run(service.add_request(req2))
+
+
+def test_richiedi_visura_returns_429_when_queue_full():
+    """Endpoint deve restituire HTTP 429 se add_request solleva QueueFullError."""
+
+    class FullService(FakeService):
+        async def add_request(self, request):
+            raise main.QueueFullError("Coda piena (limite 1)")
+
+    service = FullService()
+    request = VisuraInput(
+        provincia="Trieste", comune="TRIESTE", foglio="9", particella="166",
+        sezione="_", subalterno=None, tipo_catasto="T",
+    )
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(richiedi_visura(request, service))
+    assert exc.value.status_code == 429
+
+
+def test_richiedi_intestati_returns_429_when_queue_full():
+    class FullService(FakeService):
+        async def add_intestati_request(self, request):
+            raise main.QueueFullError("Coda piena (limite 1)")
+
+    service = FullService()
+    request = VisuraIntestatiInput(
+        provincia="Trieste", comune="TRIESTE", foglio="9", particella="166",
+        sezione="_", subalterno=None, tipo_catasto="T",
+    )
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(richiedi_intestati_immobile(request, service))
+    assert exc.value.status_code == 429
+
+
+# -------- P1 #6: codice_belfiore field --------
+
+def test_visura_input_accepts_valid_codice_belfiore():
+    """H501 (Roma) e' un codice belfiore valido (lettera + 3 cifre)."""
+    request = VisuraInput(
+        provincia="Roma", comune="Roma", foglio="9", particella="166",
+        tipo_catasto="T", codice_belfiore="H501",
+    )
+    assert request.codice_belfiore == "H501"
+
+
+def test_visura_input_rejects_invalid_codice_belfiore_format():
+    """Formato non aderente al pattern lettera+3cifre deve fallire."""
+    with pytest.raises(PydanticValidationError):
+        VisuraInput(
+            provincia="Roma", comune="Roma", foglio="9", particella="166",
+            tipo_catasto="T", codice_belfiore="1234",
+        )
+    with pytest.raises(PydanticValidationError):
+        VisuraInput(
+            provincia="Roma", comune="Roma", foglio="9", particella="166",
+            tipo_catasto="T", codice_belfiore="HH501",
+        )
+
+
+def test_visura_request_dataclass_carries_codice_belfiore():
+    request = VisuraRequest(
+        request_id="req_1", tipo_catasto="T", provincia="Roma", comune="Roma",
+        foglio="9", particella="166", codice_belfiore="H501",
+    )
+    assert request.codice_belfiore == "H501"
+
+
+def test_visura_intestati_input_accepts_codice_belfiore():
+    request = VisuraIntestatiInput(
+        provincia="Roma", comune="Roma", foglio="9", particella="166",
+        tipo_catasto="T", subalterno=None, codice_belfiore="H501",
+    )
+    assert request.codice_belfiore == "H501"

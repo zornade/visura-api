@@ -17,6 +17,7 @@
 import asyncio
 import logging
 import os
+import secrets
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -29,6 +30,8 @@ from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from pydantic import BaseModel, Field, validator
+
+from cachetools import TTLCache
 
 from utils import PageLogger, extract_all_sezioni, login, logout, run_visura, run_visura_immobile
 
@@ -74,6 +77,12 @@ class BrowserError(VisuraError):
     pass
 
 
+class QueueFullError(VisuraError):
+    """Raised when the request queue is at MAX_QUEUE_SIZE capacity."""
+
+    pass
+
+
 class ValidationError(VisuraError):
     """Raised when input validation fails"""
 
@@ -90,6 +99,7 @@ class VisuraRequest:
     particella: str
     sezione: Optional[str] = None
     subalterno: Optional[str] = None  # Opzionale: restringe la ricerca per fabbricati
+    codice_belfiore: Optional[str] = None  # Opzionale: se valorizzato bypassa il match-by-name del comune
     timestamp: datetime = None
 
     def __post_init__(self):
@@ -109,6 +119,7 @@ class VisuraIntestatiRequest:
     particella: str
     subalterno: Optional[str] = None
     sezione: Optional[str] = None
+    codice_belfiore: Optional[str] = None
     timestamp: datetime = None
 
     def __post_init__(self):
@@ -399,6 +410,7 @@ class BrowserManager:
                     request.tipo_catasto,
                     extract_intestati=False,
                     subalterno=request.subalterno,
+                    codice_belfiore=request.codice_belfiore,
                 )
             except Exception as e:
                 raise BrowserError(f"Failed to execute visura: {e}") from e
@@ -442,6 +454,7 @@ class BrowserManager:
                     foglio=request.foglio,
                     particella=request.particella,
                     subalterno=request.subalterno,
+                    codice_belfiore=request.codice_belfiore,
                 )
             else:
                 result = await run_visura(
@@ -453,6 +466,7 @@ class BrowserManager:
                     request.particella,
                     request.tipo_catasto,
                     extract_intestati=True,
+                    codice_belfiore=request.codice_belfiore,
                 )
 
             logger.info(f"Visura intestati completata per {request.request_id}")
@@ -531,10 +545,27 @@ class BrowserManager:
 
 
 class VisuraService:
+    # Difaults configurabili via env (vedi .env.example). Sono qui come costanti
+    # di classe così sono ispezionabili dai test senza istanziare il servizio.
+    DEFAULT_RESPONSE_TTL_SECONDS = 3600  # 1h: tempo medio entro cui il client
+    # consumer fa polling del risultato di una visura.
+    DEFAULT_RESPONSE_MAXSIZE = 10_000  # safety cap: oltre, le entry più vecchie
+    # vengono evicted (LRU dietro il TTL).
+    DEFAULT_QUEUE_MAXSIZE = 200  # backlog massimo; oltre soglia → HTTP 429.
+
     def __init__(self):
         self.browser_manager = BrowserManager()
-        self.request_queue = asyncio.Queue()
-        self.response_store: Dict[str, VisuraResponse] = {}
+
+        queue_max = int(os.getenv("MAX_QUEUE_SIZE", self.DEFAULT_QUEUE_MAXSIZE))
+        # ``asyncio.Queue`` con maxsize=0 è illimitata; usiamo il valore env.
+        self.request_queue: asyncio.Queue = asyncio.Queue(maxsize=queue_max)
+
+        ttl_seconds = int(os.getenv("RESPONSE_TTL_SECONDS", self.DEFAULT_RESPONSE_TTL_SECONDS))
+        maxsize = int(os.getenv("RESPONSE_STORE_MAXSIZE", self.DEFAULT_RESPONSE_MAXSIZE))
+        # TTLCache: ogni entry vive ``ttl_seconds`` poi viene rimossa; se la
+        # cache supera ``maxsize`` evict LRU. Fix memory leak F5.
+        self.response_store: TTLCache = TTLCache(maxsize=maxsize, ttl=ttl_seconds)
+
         self.processing = False
 
     async def initialize(self):
@@ -578,16 +609,34 @@ class VisuraService:
                 await asyncio.sleep(5)
 
     async def add_request(self, request: VisuraRequest) -> str:
-        """Aggiunge una richiesta alla coda"""
-        await self.request_queue.put({"request": request})
+        """Aggiunge una richiesta alla coda.
+
+        Solleva ``QueueFullError`` se la coda è piena (vedi
+        ``MAX_QUEUE_SIZE`` env). Gli endpoint la traducono in HTTP 429.
+        """
+        try:
+            self.request_queue.put_nowait({"request": request})
+        except asyncio.QueueFull as e:
+            raise QueueFullError(
+                f"Coda piena (limite {self.request_queue.maxsize}): riprovare più tardi"
+            ) from e
         logger.info(
             f"Richiesta visura {request.request_id} aggiunta alla coda (posizione: {self.request_queue.qsize()})"
         )
         return request.request_id
 
     async def add_intestati_request(self, request: VisuraIntestatiRequest) -> str:
-        """Aggiunge una richiesta intestati alla coda"""
-        await self.request_queue.put({"request": request})
+        """Aggiunge una richiesta intestati alla coda.
+
+        Solleva ``QueueFullError`` se la coda è piena (vedi
+        ``MAX_QUEUE_SIZE`` env). Gli endpoint la traducono in HTTP 429.
+        """
+        try:
+            self.request_queue.put_nowait({"request": request})
+        except asyncio.QueueFull as e:
+            raise QueueFullError(
+                f"Coda piena (limite {self.request_queue.maxsize}): riprovare più tardi"
+            ) from e
         logger.info(
             f"Richiesta intestati {request.request_id} aggiunta alla coda (posizione: {self.request_queue.qsize()})"
         )
@@ -655,12 +704,38 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 
 async def verify_api_key(api_key: str = Depends(api_key_header)):
-    """Verifica che l'API Key fornita corrisponda a quella configurata."""
+    """Verifica che l'API Key fornita corrisponda a quella configurata.
+
+    Se la variabile ``API_KEY`` non è impostata in env la protezione è
+    disabilitata per gli endpoint che dipendono da questa funzione (uso "soft":
+    in dev locale è comodo non dover sempre passare la chiave). Per gli
+    endpoint amministrativi usare ``verify_api_key_strict``.
+    """
     expected_key = os.getenv("API_KEY")
     if not expected_key:
-        # Se non è configurata una API Key, la protezione è disabilitata
         return None
-    if api_key != expected_key:
+    if not api_key or not secrets.compare_digest(api_key, expected_key):
+        raise HTTPException(status_code=403, detail="API Key non valida o mancante")
+    return api_key
+
+
+async def verify_api_key_strict(api_key: str = Depends(api_key_header)):
+    """Variante fail-closed di ``verify_api_key`` per endpoint amministrativi.
+
+    Richiede sempre che ``API_KEY`` sia configurata in env e che il client
+    fornisca un header valido: se ``API_KEY`` manca l'endpoint risponde 503
+    (servizio mal configurato) invece di accettare chiamate anonime.
+    """
+    expected_key = os.getenv("API_KEY")
+    if not expected_key:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Endpoint amministrativo disabilitato: configurare la "
+                "variabile d'ambiente API_KEY per abilitarlo."
+            ),
+        )
+    if not api_key or not secrets.compare_digest(api_key, expected_key):
         raise HTTPException(status_code=403, detail="API Key non valida o mancante")
     return api_key
 
@@ -682,6 +757,15 @@ class VisuraInput(BaseModel):
     tipo_catasto: Optional[str] = Field(
         None, pattern=r"^[TF]$", description="'T' = Terreni, 'F' = Fabbricati (se omesso esegue entrambi)"
     )
+    codice_belfiore: Optional[str] = Field(
+        None,
+        pattern=r"^[A-Za-z]\d{3}$",
+        description=(
+            "Codice belfiore catastale del comune (4 char, lettera + 3 cifre, es. 'H501'). "
+            "Se valorizzato bypassa il match per nome sul dropdown SISTER ed e' piu' robusto "
+            "per comuni con varianti ortografiche tra ISTAT e SISTER."
+        ),
+    )
 
     @validator("tipo_catasto")
     def validate_tipo_catasto(cls, v):
@@ -700,6 +784,11 @@ class VisuraIntestatiInput(BaseModel):
     tipo_catasto: str = Field(..., pattern=r"^[TF]$", description="'T' = Terreni, 'F' = Fabbricati")
     subalterno: Optional[str] = Field(None, description="Numero di subalterno (obbligatorio per Fabbricati)")
     sezione: Optional[str] = Field(None, description="Sezione (opzionale)")
+    codice_belfiore: Optional[str] = Field(
+        None,
+        pattern=r"^[A-Za-z]\d{3}$",
+        description="Codice belfiore catastale del comune (vedi VisuraInput.codice_belfiore).",
+    )
 
     @validator("tipo_catasto")
     def validate_tipo_catasto(cls, v):
@@ -755,6 +844,7 @@ async def richiedi_visura(
                 foglio=request.foglio,
                 particella=request.particella,
                 subalterno=request.subalterno,
+                codice_belfiore=request.codice_belfiore,
             )
             await service.add_request(visura_req)
             request_ids.append(request_id)
@@ -770,6 +860,9 @@ async def richiedi_visura(
 
     except HTTPException:
         raise
+    except QueueFullError as e:
+        logger.warning(f"Coda piena, rifiuto richiesta visura: {e}")
+        raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
         logger.error(f"Errore nella richiesta visura: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
@@ -827,6 +920,7 @@ async def richiedi_intestati_immobile(
             particella=request.particella,
             subalterno=request.subalterno,
             sezione=sezione,
+            codice_belfiore=request.codice_belfiore,
         )
 
         await service.add_intestati_request(intestati_request)
@@ -844,6 +938,9 @@ async def richiedi_intestati_immobile(
 
     except HTTPException:
         raise
+    except QueueFullError as e:
+        logger.warning(f"Coda piena, rifiuto richiesta intestati: {e}")
+        raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
         logger.error(f"Errore nella richiesta intestati: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Errore interno del server. Consulta i log per i dettagli.")
@@ -863,7 +960,8 @@ async def health_check(service: VisuraService = Depends(get_visura_service)):
 
 @app.post("/shutdown")
 async def graceful_shutdown_endpoint(
-    service: VisuraService = Depends(get_visura_service), _key: str = Depends(verify_api_key)
+    service: VisuraService = Depends(get_visura_service),
+    _key: str = Depends(verify_api_key_strict),
 ):
     """Effettua uno shutdown graceful del servizio"""
     try:
@@ -879,7 +977,7 @@ async def graceful_shutdown_endpoint(
 async def extract_sezioni(
     request: SezioniExtractionRequest,
     service: VisuraService = Depends(get_visura_service),
-    _key: str = Depends(verify_api_key),
+    _key: str = Depends(verify_api_key_strict),
 ):
     """
     Estrae le sezioni territoriali d'Italia per il tipo catasto specificato.
