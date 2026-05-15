@@ -29,7 +29,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from cachetools import TTLCache
 
@@ -723,7 +723,7 @@ def get_visura_service() -> VisuraService:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    global visura_service
+    global visura_service  # noqa: PLW0603 - FastAPI lifespan singleton pattern
     PageLogger.reset_session()  # Nuova sessione di log per ogni avvio
     visura_service = VisuraService()
     await visura_service.initialize()
@@ -820,7 +820,8 @@ class VisuraInput(BaseModel):
         ),
     )
 
-    @validator("tipo_catasto")
+    @field_validator("tipo_catasto")
+    @classmethod
     def validate_tipo_catasto(cls, v):
         if v is not None and v not in ["T", "F"]:
             raise ValidationError(f"tipo_catasto deve essere 'T' o 'F', ricevuto {v}")
@@ -843,15 +844,17 @@ class VisuraIntestatiInput(BaseModel):
         description="Codice belfiore catastale del comune (vedi VisuraInput.codice_belfiore).",
     )
 
-    @validator("tipo_catasto")
+    @field_validator("tipo_catasto")
+    @classmethod
     def validate_tipo_catasto(cls, v):
         if v not in ["T", "F"]:
             raise ValidationError(f"tipo_catasto deve essere 'T' o 'F', ricevuto {v}")
         return v
 
-    @validator("subalterno")
-    def validate_subalterno(cls, v, values):
-        tipo_catasto = values.get("tipo_catasto")
+    @field_validator("subalterno")
+    @classmethod
+    def validate_subalterno(cls, v, info):
+        tipo_catasto = info.data.get("tipo_catasto")
         if tipo_catasto == "F" and not v:
             raise ValidationError("subalterno è obbligatorio per i fabbricati (tipo_catasto='F')")
         if tipo_catasto == "T" and v:

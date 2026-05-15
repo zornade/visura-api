@@ -2,6 +2,7 @@
 # Copyright (C) 2026 zornade (https://zornade.com)
 # See LICENSE, NOTICE, and COMMERCIAL-LICENSE.md at the repository root.
 
+import asyncio
 import logging
 import os
 import re
@@ -80,7 +81,9 @@ def parse_table(html):
             # Se ci sono meno celle che header, aggiungi celle vuote
             while len(cells) < len(headers):
                 cells.append("")
-            rows.append(dict(zip(headers, cells)))
+            # strict=False: cells is pre-padded to len(headers); extra cells
+            # (rare: malformed HTML with more <td> than <th>) are intentionally dropped.
+            rows.append(dict(zip(headers, cells, strict=False)))
     return rows
 
 
@@ -158,11 +161,22 @@ class PageLogger:
             safe_name = re.sub(r"[^\w\-]", "_", step_name)
             filename = f"{self.step:02d}_{safe_name}.html"
             filepath = os.path.join(self.base_dir, filename)
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(f"<!-- URL: {url} -->\n")
-                f.write(f"<!-- Step: {step_name} -->\n")
-                f.write(f"<!-- Timestamp: {datetime.now().isoformat()} -->\n\n")
-                f.write(html)
+            # Write off the event loop: open()/write() are blocking syscalls
+            # and were previously freezing the asyncio loop for the duration
+            # of the disk write (ASYNC230). We use asyncio.to_thread so any
+            # I/O slowness (e.g. EBS, full disk) cannot starve the loop.
+            payload = (
+                f"<!-- URL: {url} -->\n"
+                f"<!-- Step: {step_name} -->\n"
+                f"<!-- Timestamp: {datetime.now().isoformat()} -->\n\n"
+                f"{html}"
+            )
+
+            def _write_file() -> None:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(payload)
+
+            await asyncio.to_thread(_write_file)
             print(f"[PAGE_LOG] {self.flow_name}/{filename}")
         except Exception as e:
             print(f"[PAGE_LOG] Errore salvataggio {step_name}: {e}")
