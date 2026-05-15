@@ -640,6 +640,165 @@ def _normalize_for_match(value: str) -> str:
     return re.sub(r"\s+", " ", lowered).strip()
 
 
+# =============================================================================
+# Dropdown options: estrazione fast (single page.evaluate) + cache process-wide
+# =============================================================================
+#
+# Motivazione perf:
+#   Il pattern originale ``page.locator(sel).all()`` + N×(``get_attribute`` +
+#   ``inner_text``) costa 2N round-trip CDP. Con ~110 province o ~300 comuni
+#   sono 600-1800ms di IPC puro per ogni richiesta. ``page.evaluate`` esegue
+#   un singolo round-trip e ritorna l'array completo in JSON (≪100ms).
+#
+# Cache:
+#   - ``_DROPDOWN_CACHE[("province",)]`` → {"items": [(value, text)], "by_norm": {…}}
+#     Province: stabili nel tempo (cambiano <1/anno). Una volta caricate, riusate
+#     per tutta la vita del processo.
+#   - ``_DROPDOWN_CACHE[("comune", provincia_value)]`` →
+#     {"items": [(value, text)], "by_belfiore": {CB: value}, "by_norm": {norm: value}}
+#     Comuni per provincia: anch'essi stabili (catastalmente). Cache per-provincia.
+#
+# Diagnostica:
+#   - ``[OPTS]`` log ogni estrazione live con count + elapsed.
+#   - ``[CACHE hit|miss|STALE|disabled]`` ogni accesso alla cache.
+#   - Kill switch: ``DROPDOWN_CACHE=0`` disabilita interamente la cache (fallback
+#     a estrazione live ogni volta, ma comunque con ``_collect_options_fast``).
+#   - In caso di failure su ``select_option`` chiamare ``invalidate_dropdown_cache``
+#     per forzare un refetch alla richiesta successiva.
+
+_DROPDOWN_CACHE: dict = {}
+
+
+def _dropdown_cache_enabled() -> bool:
+    return os.getenv("DROPDOWN_CACHE", "1") == "1"
+
+
+def invalidate_dropdown_cache(reason: str = "") -> None:
+    """Svuota la cache delle dropdown SISTER.
+
+    Chiamare quando un ``select_option`` fallisce con un valore preso dalla
+    cache (cache stale), o su restart browser/recovery sessione. Stampa il
+    motivo per diagnostica (grep ``[CACHE] invalidate``).
+    """
+    n = len(_DROPDOWN_CACHE)
+    _DROPDOWN_CACHE.clear()
+    print(f"[CACHE] invalidate cleared={n} reason={reason or 'unspecified'}")
+
+
+async def _collect_options_fast(page, selector: str) -> list:
+    """Estrae tutte le ``<option>`` di ``selector`` in un solo round-trip CDP.
+
+    Ritorna lista di tuple ``(value, text)``. Sostituisce il pattern
+    ``locator(...).all()`` + N×``get_attribute``/``inner_text`` (2N round-trip).
+    Lascia trasparire le eccezioni Playwright al chiamante per non mascherare
+    bug strutturali (selector errato, pagina chiusa, ecc.).
+    """
+    t0 = time.time()
+    raw = await page.evaluate(
+        """sel => Array.from(document.querySelectorAll(sel + ' option'))
+                    .map(o => [o.value || '', (o.textContent || '').trim()])""",
+        selector,
+    )
+    # raw è una lista di liste [value, text]; normalizza a tuple di str
+    items = [(str(v or ""), str(t or "")) for v, t in raw]
+    elapsed_ms = (time.time() - t0) * 1000
+    print(f"[OPTS] selector='{selector}' count={len(items)} source=evaluate elapsed={elapsed_ms:.0f}ms")
+    return items
+
+
+def _build_comune_indexes(items: list) -> dict:
+    """Costruisce indici lookup per i comuni: by codice belfiore e by nome normalizzato.
+
+    ``items`` è la lista (value, text) ritornata da ``_collect_options_fast``.
+    Le option SISTER hanno ``value`` nella forma ``CB#NOME#0#0`` (es. ``H501#ROMA#0#0``).
+    """
+    by_belfiore: dict = {}
+    by_norm: dict = {}
+    for value, text in items:
+        if not value:
+            continue
+        # codice belfiore: prefisso prima del primo '#'
+        prefix = value.split("#", 1)[0].upper().strip()
+        if prefix and prefix not in by_belfiore:
+            by_belfiore[prefix] = value
+        if text:
+            norm = _normalize_for_match(text)
+            if norm and norm not in by_norm:
+                by_norm[norm] = value
+    return {"items": items, "by_belfiore": by_belfiore, "by_norm": by_norm}
+
+
+def _build_province_indexes(items: list) -> dict:
+    """Costruisce indici lookup per le province: solo by nome normalizzato."""
+    by_norm: dict = {}
+    for value, text in items:
+        if not value or not text:
+            continue
+        norm = _normalize_for_match(text)
+        if norm and norm not in by_norm:
+            by_norm[norm] = value
+    return {"items": items, "by_norm": by_norm}
+
+
+def _format_options_for_debug(items: list) -> list:
+    """Ritorna lista 'text (value)' per le print di diagnostica 'disponibili'.
+
+    ``items`` è il valore ritornato da ``_collect_options_fast``.
+    Filtra entry con value o text vuoto. Usato per costruire il messaggio di
+    errore quando una option non viene trovata: l'output coincide con il
+    formato originale (`f"{text} ({value})"`).
+    """
+    return [f"{t} ({v})" for v, t in items if v and t]
+
+
+async def _get_province_options(page) -> dict:
+    """Ritorna gli indici delle province SISTER, cache process-wide se abilitata."""
+    selector = "select[name='listacom']"
+    if _dropdown_cache_enabled():
+        cached = _DROPDOWN_CACHE.get(("province",))
+        if cached is not None:
+            print(f"[CACHE] hit kind=province count={len(cached['items'])}")
+            return cached
+        print("[CACHE] miss kind=province fetching live")
+    else:
+        print("[CACHE] disabled kind=province (DROPDOWN_CACHE=0)")
+    items = await _collect_options_fast(page, selector)
+    idx = _build_province_indexes(items)
+    if _dropdown_cache_enabled():
+        _DROPDOWN_CACHE[("province",)] = idx
+        print(f"[CACHE] store kind=province count={len(items)}")
+    return idx
+
+
+async def _get_comune_options(page, provincia_value: Optional[str]) -> dict:
+    """Ritorna gli indici dei comuni per ``provincia_value``.
+
+    Cache key = ``("comune", provincia_value)``. Se ``provincia_value`` è ``None``
+    (caller non lo conosce — ramo legacy) usiamo ``""`` come chiave: cache
+    condivisa, comunque utile dentro la stessa request (più chiamate
+    sequenziali sulla stessa pagina post-applica).
+    """
+    selector = "select[name='denomComune']"
+    key = ("comune", provincia_value or "")
+    if _dropdown_cache_enabled():
+        cached = _DROPDOWN_CACHE.get(key)
+        if cached is not None:
+            print(
+                f"[CACHE] hit kind=comune provincia='{provincia_value}' "
+                f"count={len(cached['items'])}"
+            )
+            return cached
+        print(f"[CACHE] miss kind=comune provincia='{provincia_value}' fetching live")
+    else:
+        print("[CACHE] disabled kind=comune (DROPDOWN_CACHE=0)")
+    items = await _collect_options_fast(page, selector)
+    idx = _build_comune_indexes(items)
+    if _dropdown_cache_enabled():
+        _DROPDOWN_CACHE[key] = idx
+        print(f"[CACHE] store kind=comune provincia='{provincia_value}' count={len(items)}")
+    return idx
+
+
 async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: str) -> Optional[str]:
     """Trova un'option SISTER il cui ``value`` inizia con ``{codice_belfiore}#``.
 
@@ -653,6 +812,10 @@ async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: s
 
     Ritorna il ``value`` dell'option oppure ``None`` se nessuna option
     nel ``select`` ha quel prefisso.
+
+    Implementazione (perf): usa ``_collect_options_fast`` (singolo evaluate)
+    con cache per-provincia. Se il selector non è quello dei comuni SISTER
+    fa fallback a un evaluate diretto senza cache.
     """
     if not codice_belfiore:
         return None
@@ -660,12 +823,24 @@ async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: s
     if not cb:
         return None
     prefix = f"{cb}#"
-    options = await page.locator(f"{selector} option").all()
-    print(f"[MATCH_BELFIORE] Cerco codice belfiore '{cb}' tra {len(options)} option")
-    for option in options:
-        value = await option.get_attribute("value")
+    # Path veloce con cache per il selector standard dei comuni
+    if selector == "select[name='denomComune']":
+        idx = await _get_comune_options(page, provincia_value=None)
+        value = idx["by_belfiore"].get(cb)
+        if value:
+            print(f"[MATCH_BELFIORE] hit cache cb='{cb}' -> '{value}'")
+            return value
+        # No-hit: log e ritorna None (caller fa fallback su match by name)
+        print(
+            f"[MATCH_BELFIORE] miss cb='{cb}' tra {len(idx['items'])} option "
+            f"(comuni provincia corrente)"
+        )
+        return None
+    # Path generico (no cache): un solo evaluate + scan
+    items = await _collect_options_fast(page, selector)
+    print(f"[MATCH_BELFIORE] Cerco codice belfiore '{cb}' tra {len(items)} option (no-cache)")
+    for value, text in items:
         if value and value.upper().startswith(prefix):
-            text = await option.inner_text()
             print(f"[MATCH_BELFIORE] Match: '{text}' -> '{value}'")
             return value
     print(f"[MATCH_BELFIORE] Nessuna option con prefisso '{prefix}'")
@@ -688,19 +863,37 @@ async def find_best_option_match(page, selector, search_text):
     → contains → match dell'alias catastale. Restituisce il ``value``
     dell'option scelta, oppure ``None`` se nessuna opzione è plausibile.
     """
-    options = await page.locator(f"{selector} option").all()
+    # Estrazione fast (single evaluate) + cache process-wide per i selector standard
+    if selector == "select[name='listacom']":
+        idx = await _get_province_options(page)
+        items = idx["items"]
+        # Tentativo lookup O(1) sulla cache by normalized name
+        search_norm_pre = _normalize_for_match(search_text)
+        if search_norm_pre and search_norm_pre in idx["by_norm"]:
+            v = idx["by_norm"][search_norm_pre]
+            print(f"[MATCH] CACHE hit provincia '{search_text}' -> '{v}'")
+            return v
+    elif selector == "select[name='denomComune']":
+        idx = await _get_comune_options(page, provincia_value=None)
+        items = idx["items"]
+        search_norm_pre = _normalize_for_match(search_text)
+        if search_norm_pre and search_norm_pre in idx["by_norm"]:
+            v = idx["by_norm"][search_norm_pre]
+            print(f"[MATCH] CACHE hit comune '{search_text}' -> '{v}'")
+            return v
+    else:
+        # Selector non standard (es. select[name='sezione']) — solo evaluate, no cache
+        items = await _collect_options_fast(page, selector)
+
     best_match = None
     best_score = 0
 
-    print(f"[MATCH] Cerco '{search_text}' tra {len(options)} opzioni")
+    print(f"[MATCH] Cerco '{search_text}' tra {len(items)} opzioni (post-fast)")
 
     search_norm = _normalize_for_match(search_text)
     search_alias = _CATASTAL_PROVINCE_ALIASES.get(search_norm)
 
-    for option in options:
-        value = await option.get_attribute("value")
-        text = await option.inner_text()
-
+    for value, text in items:
         if not value or not text:
             continue
 
@@ -832,14 +1025,9 @@ async def run_visura(
     # Trova e seleziona la provincia corretta
     print(f"[VISURA] Cercando provincia: {provincia}")
 
-    # Prima estrai tutte le province disponibili per debug
-    provincia_options = await page.locator("select[name='listacom'] option").all()
-    available_provinces = []
-    for option in provincia_options:
-        value = await option.get_attribute("value")
-        text = await option.inner_text()
-        if value and text:
-            available_provinces.append(f"{text} ({value})")
+    # Prima estrai tutte le province disponibili per debug (single evaluate via helper)
+    _prov_items = await _collect_options_fast(page, "select[name='listacom']")
+    available_provinces = _format_options_for_debug(_prov_items)
 
     # Se non ci sono province disponibili, probabilmente la sessione è scaduta
     if len(available_provinces) == 0:
@@ -888,14 +1076,9 @@ async def run_visura(
     # Trova e seleziona il comune corretto
     print(f"[VISURA] Cercando comune: {comune}")
 
-    # Prima estrai tutti i comuni disponibili per debug
-    comune_options = await page.locator("select[name='denomComune'] option").all()
-    available_comuni = []
-    for option in comune_options:
-        value = await option.get_attribute("value")
-        text = await option.inner_text()
-        if value and text:
-            available_comuni.append(f"{text} ({value})")
+    # Prima estrai tutti i comuni disponibili per debug (single evaluate via helper)
+    _comune_items = await _collect_options_fast(page, "select[name='denomComune']")
+    available_comuni = _format_options_for_debug(_comune_items)
 
     print(
         f"[VISURA] Comuni disponibili: {', '.join(available_comuni[:10])}{'...' if len(available_comuni) > 10 else ''}"
@@ -938,14 +1121,9 @@ async def run_visura(
         await page.wait_for_load_state("domcontentloaded", timeout=30000)
         print("[VISURA] Button sezione cliccato, dropdown attivato")
 
-        # Prima estrai tutte le opzioni disponibili per debug
-        options = await page.locator("select[name='sezione'] option").all()
-        available_sections = []
-        for option in options:
-            value = await option.get_attribute("value")
-            text = await option.inner_text()
-            if value and text:
-                available_sections.append(f"{text} ({value})")
+        # Prima estrai tutte le opzioni disponibili per debug (single evaluate via helper)
+        _sez_items = await _collect_options_fast(page, "select[name='sezione']")
+        available_sections = _format_options_for_debug(_sez_items)
 
         print(f"[VISURA] Sezioni disponibili: {', '.join(available_sections)}")
 
@@ -1280,12 +1458,10 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
 
         # Estrai tutte le province
         print("[SEZIONI] Estraendo lista province...")
-        provincia_options = await page.locator("select[name='listacom'] option").all()
+        _prov_items_iv = await _collect_options_fast(page, "select[name='listacom']")
         province_list = []
 
-        for option in provincia_options:
-            value = await option.get_attribute("value")
-            text = await option.inner_text()
+        for value, text in _prov_items_iv:
             if value and text and value.strip() and text.strip():
                 # Salta "NAZIONALE" che sembra problematico
                 if "NAZIONALE" not in text.upper():
@@ -1326,12 +1502,10 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
 
                 # Estrai tutti i comuni per questa provincia
                 print("[SEZIONI] Estraendo lista comuni...")
-                comune_options = await page.locator("select[name='denomComune'] option").all()
+                _comune_items_iv = await _collect_options_fast(page, "select[name='denomComune']")
                 comuni_list = []
 
-                for option in comune_options:
-                    value = await option.get_attribute("value")
-                    text = await option.inner_text()
+                for value, text in _comune_items_iv:
                     if value and text and value.strip() and text.strip():
                         comuni_list.append({"value": value.strip(), "text": text.strip()})
 
@@ -1360,12 +1534,10 @@ async def extract_all_sezioni(page: Page, tipo_catasto: str = "T", max_province:
 
                         try:
                             # Prima verifica se ci sono sezioni disponibili
-                            sezione_options = await page.locator("select[name='sezione'] option").all()
+                            _sez_items_iv = await _collect_options_fast(page, "select[name='sezione']")
                             available_sections = []
 
-                            for option in sezione_options:
-                                value = await option.get_attribute("value")
-                                text = await option.inner_text()
+                            for value, text in _sez_items_iv:
                                 if value and text and value.strip() and text.strip():
                                     available_sections.append({"value": value.strip(), "text": text.strip()})
 
@@ -1549,14 +1721,9 @@ async def run_visura_immobile(
         await page.locator("input[name='selSezione'][value='scegli la sezione']").click()
         await page.wait_for_load_state("domcontentloaded", timeout=30000)
 
-        # Controlla se ci sono sezioni disponibili
-        options = await page.locator("select[name='sezione'] option").all()
-        available_sections = []
-        for option in options:
-            value = await option.get_attribute("value")
-            text = await option.inner_text()
-            if value and text:
-                available_sections.append(f"{text} ({value})")
+        # Controlla se ci sono sezioni disponibili (single evaluate via helper)
+        _sez_items_im = await _collect_options_fast(page, "select[name='sezione']")
+        available_sections = _format_options_for_debug(_sez_items_im)
 
         if not available_sections:
             print(f"[VISURA_IMMOBILE] Nessuna sezione disponibile per il comune '{comune}', saltando selezione sezione")

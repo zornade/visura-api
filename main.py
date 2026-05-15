@@ -151,6 +151,64 @@ class BrowserManager:
         self.authenticated = False
         self.keep_alive_running = False
         self.last_login_time = None
+        # Stats per resource blocking (popolato in initialize → context.route)
+        self.blocked_resources_count: int = 0
+        self.blocked_resources_samples: list = []  # primi N URL bloccati per diagnostica
+
+    async def _install_resource_blocking(self) -> None:
+        """Installa un route handler a livello context che blocca asset inutili.
+
+        Motivazione perf: SISTER carica 30-80 asset per pagina (logos, font,
+        icone, fogli stile esterni, talvolta tracker). La maggior parte non
+        serve all'API perché interagiamo via DOM/selettori, non visual rendering.
+        Bloccare ``image``/``font``/``media`` riduce la latenza di rete percepita
+        senza impattare ``page.evaluate`` / `get_by_role` / locator-based logic.
+
+        Diagnostica:
+          - ``RESOURCE_BLOCK=0`` disabilita il blocco (utile per debugging live
+            quando si sospetta che il blocking causi failure).
+          - ``RESOURCE_BLOCK_TYPES`` override CSV dei tipi bloccati
+            (default: ``image,font,media``). Per essere conservativi ``stylesheet``
+            NON e' bloccato di default — alcuni check di visibility Playwright
+            possono dipendere da CSS computed.
+          - Counter cumulativo (``blocked_resources_count``) + sample dei primi
+            10 URL (``blocked_resources_samples``) esposti su ``BrowserManager``
+            per ispezione via debug endpoint o log.
+          - Log per evento: ``[BLOCK] type=X url=Y`` (solo i primi 10) e
+            riepilogo periodico ``[BLOCK] cumulative=N``.
+        """
+        if os.getenv("RESOURCE_BLOCK", "1") != "1":
+            logger.info("[BLOCK] resource blocking disabilitato (RESOURCE_BLOCK=0)")
+            return
+
+        types_env = os.getenv("RESOURCE_BLOCK_TYPES", "image,font,media")
+        blocked_types = {t.strip().lower() for t in types_env.split(",") if t.strip()}
+        logger.info(f"[BLOCK] resource blocking attivo types={sorted(blocked_types)}")
+
+        async def _route_handler(route):
+            try:
+                rtype = route.request.resource_type
+                if rtype in blocked_types:
+                    self.blocked_resources_count += 1
+                    if len(self.blocked_resources_samples) < 10:
+                        sample = f"{rtype}:{route.request.url[:120]}"
+                        self.blocked_resources_samples.append(sample)
+                        logger.info(f"[BLOCK] type={rtype} url={route.request.url[:120]}")
+                    # Log periodico cumulativo ogni 200 blocchi
+                    if self.blocked_resources_count % 200 == 0:
+                        logger.info(f"[BLOCK] cumulative={self.blocked_resources_count}")
+                    await route.abort()
+                    return
+                await route.continue_()
+            except Exception as e:
+                # Non far mai rompere la richiesta a causa del blocking
+                logger.warning(f"[BLOCK] route handler error (continuing request): {e}")
+                try:
+                    await route.continue_()
+                except Exception:
+                    pass
+
+        await self.context.route("**/*", _route_handler)
 
     async def initialize(self):
         """Inizializza il browser e il contexto"""
@@ -183,6 +241,17 @@ class BrowserManager:
             )
 
             self.context = await self.browser.new_context()
+            # Reset counter + samples ad ogni init (anche su recovery)
+            self.blocked_resources_count = 0
+            self.blocked_resources_samples = []
+            await self._install_resource_blocking()
+            # Invalidate dropdown cache: nuovo context = nuove pagine SISTER fresh,
+            # le option list saranno ri-popolate alla prima richiesta.
+            try:
+                from utils import invalidate_dropdown_cache
+                invalidate_dropdown_cache(reason="browser_initialize")
+            except Exception as e:
+                logger.warning(f"invalidate_dropdown_cache failed at init: {e}")
             logger.info("Browser inizializzato")
         except Exception as e:
             logger.error(f"Failed to initialize browser: {e}")

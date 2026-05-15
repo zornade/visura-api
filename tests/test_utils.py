@@ -7,6 +7,14 @@ import utils
 from utils import parse_table
 
 
+@pytest.fixture(autouse=True)
+def _clear_dropdown_cache():
+    """Svuota la cache dropdown tra ogni test per evitare pollution cross-test."""
+    utils.invalidate_dropdown_cache(reason="pytest_fixture")
+    yield
+    utils.invalidate_dropdown_cache(reason="pytest_fixture_teardown")
+
+
 def test_parse_table_extracts_rows_and_columns():
     html = """
     <table>
@@ -71,6 +79,16 @@ class _FakePageForMatch:
 
     def locator(self, _selector):
         return _FakeLocator(self._options)
+
+    async def evaluate(self, _script, _selector=None):
+        # Simula il page.evaluate usato da _collect_options_fast: ritorna
+        # [[value, text], ...] in modo coerente con i fake options.
+        out = []
+        for opt in self._options:
+            v = await opt.get_attribute("value")
+            t = await opt.inner_text()
+            out.append([v or "", (t or "").strip()])
+        return out
 
 
 class _FakePageClosed:
@@ -470,3 +488,91 @@ def test_find_option_by_codice_belfiore_returns_none_on_empty_input():
     assert asyncio.run(utils.find_option_by_codice_belfiore(page, "sel", "")) is None
     assert asyncio.run(utils.find_option_by_codice_belfiore(page, "sel", "   ")) is None
     assert asyncio.run(utils.find_option_by_codice_belfiore(page, "sel", None)) is None
+
+
+# -------- MVP-2: dropdown cache + _collect_options_fast --------
+
+def test_collect_options_fast_returns_value_text_tuples():
+    """Single page.evaluate path: ritorna lista di (value, text) normalizzata."""
+    page = _FakePageForMatch([
+        _FakeOption("V1", "  T1  "),
+        _FakeOption("V2", "T2"),
+        _FakeOption("", "skipped_text_only"),
+    ])
+    items = asyncio.run(utils._collect_options_fast(page, "any"))
+    # Il fake evaluate fa strip() su text; value vuoto resta vuoto
+    assert items == [("V1", "T1"), ("V2", "T2"), ("", "skipped_text_only")]
+
+
+def test_format_options_for_debug_filters_empty():
+    items = [("V1", "T1"), ("", "T_no_value"), ("V3", ""), ("V4", "T4")]
+    assert utils._format_options_for_debug(items) == ["T1 (V1)", "T4 (V4)"]
+
+
+def test_dropdown_cache_province_hit_avoids_second_evaluate(monkeypatch):
+    """Seconda lookup sulla stessa provincia deve usare la cache (no re-evaluate)."""
+    page = _FakePageForMatch([_FakeOption("RM", "ROMA"), _FakeOption("MI", "MILANO")])
+    monkeypatch.setenv("DROPDOWN_CACHE", "1")
+    utils.invalidate_dropdown_cache(reason="test_setup")
+
+    # Conta quante volte _collect_options_fast viene chiamato
+    calls = {"n": 0}
+    real = utils._collect_options_fast
+    async def counting(p, s):
+        calls["n"] += 1
+        return await real(p, s)
+    monkeypatch.setattr(utils, "_collect_options_fast", counting)
+
+    r1 = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "ROMA"))
+    r2 = asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "ROMA"))
+    assert r1 == "RM" and r2 == "RM"
+    # Solo una chiamata: la seconda risolve via cache by_norm
+    assert calls["n"] == 1, f"expected 1 evaluate call, got {calls['n']}"
+
+
+def test_dropdown_cache_disabled_refetches_each_time(monkeypatch):
+    page = _FakePageForMatch([_FakeOption("RM", "ROMA")])
+    monkeypatch.setenv("DROPDOWN_CACHE", "0")
+    utils.invalidate_dropdown_cache(reason="test_setup")
+
+    calls = {"n": 0}
+    real = utils._collect_options_fast
+    async def counting(p, s):
+        calls["n"] += 1
+        return await real(p, s)
+    monkeypatch.setattr(utils, "_collect_options_fast", counting)
+
+    asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "ROMA"))
+    asyncio.run(utils.find_best_option_match(page, "select[name='listacom']", "ROMA"))
+    assert calls["n"] == 2, f"expected 2 evaluate calls (cache off), got {calls['n']}"
+
+
+def test_find_option_by_codice_belfiore_uses_comune_cache(monkeypatch):
+    """Il path comune (select[name='denomComune']) deve passare dalla cache."""
+    page = _FakePageForMatch([
+        _FakeOption("H501#ROMA#0#0", "ROMA"),
+        _FakeOption("F205#MILANO#0#0", "MILANO"),
+    ])
+    monkeypatch.setenv("DROPDOWN_CACHE", "1")
+    utils.invalidate_dropdown_cache(reason="test_setup")
+
+    calls = {"n": 0}
+    real = utils._collect_options_fast
+    async def counting(p, s):
+        calls["n"] += 1
+        return await real(p, s)
+    monkeypatch.setattr(utils, "_collect_options_fast", counting)
+
+    r1 = asyncio.run(utils.find_option_by_codice_belfiore(page, "select[name='denomComune']", "H501"))
+    r2 = asyncio.run(utils.find_option_by_codice_belfiore(page, "select[name='denomComune']", "F205"))
+    assert r1 == "H501#ROMA#0#0"
+    assert r2 == "F205#MILANO#0#0"
+    # Una sola evaluate: la seconda lookup serve dalla stessa cache
+    assert calls["n"] == 1, f"expected 1 evaluate call, got {calls['n']}"
+
+
+def test_invalidate_dropdown_cache_clears_state():
+    utils._DROPDOWN_CACHE[("province",)] = {"items": [], "by_norm": {}}
+    utils._DROPDOWN_CACHE[("comune", "")] = {"items": [], "by_norm": {}, "by_belfiore": {}}
+    utils.invalidate_dropdown_cache(reason="unit_test")
+    assert utils._DROPDOWN_CACHE == {}
