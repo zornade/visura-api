@@ -664,3 +664,127 @@ def test_visura_intestati_input_accepts_codice_belfiore():
         tipo_catasto="T", subalterno=None, codice_belfiore="H501",
     )
     assert request.codice_belfiore == "H501"
+
+
+# -------- Fallback T<->F when first attempt returns NESSUNA CORRISPONDENZA --------
+
+def test_visura_input_accepts_fallback_other_catasto_flag():
+    request = VisuraInput(
+        provincia="Roma", comune="Roma", foglio="9", particella="166",
+        tipo_catasto="T", fallback_other_catasto=True,
+    )
+    assert request.fallback_other_catasto is True
+
+
+def test_visura_input_defaults_fallback_to_false():
+    request = VisuraInput(
+        provincia="Roma", comune="Roma", foglio="9", particella="166",
+        tipo_catasto="T",
+    )
+    assert request.fallback_other_catasto is False
+
+
+def test_visura_request_dataclass_carries_fallback_flag():
+    request = VisuraRequest(
+        request_id="req_1", tipo_catasto="T", provincia="Roma", comune="Roma",
+        foglio="9", particella="166", fallback_other_catasto=True,
+    )
+    assert request.fallback_other_catasto is True
+
+
+def test_esegui_visura_falls_back_to_other_catasto_when_not_found(monkeypatch):
+    """Se il primo run_visura ritorna NESSUNA CORRISPONDENZA e fallback_other_catasto e' True,
+    si ritenta sull'altro tipo e si adotta il risultato se trova qualcosa."""
+    calls = []
+
+    async def fake_run_visura(page, prov, com, sez, foglio, part, tipo, **kwargs):
+        calls.append(tipo)
+        if tipo == "T":
+            return {"immobili": [], "results": [], "total_results": 0,
+                    "intestati": [], "error": "NESSUNA CORRISPONDENZA TROVATA"}
+        return {"immobili": [{"foo": "bar"}], "results": [{"foo": "bar"}],
+                "total_results": 1, "intestati": []}
+
+    monkeypatch.setattr("main.run_visura", fake_run_visura)
+
+    bm = main.BrowserManager()
+    bm.authenticated = True
+    bm.auth_page = object()
+
+    async def _noop():
+        return None
+    bm._ensure_authenticated = _noop  # type: ignore
+
+    req = VisuraRequest(
+        request_id="req_test", tipo_catasto="T", provincia="Roma", comune="Roma",
+        foglio="1", particella="1", fallback_other_catasto=True,
+    )
+    response = asyncio.run(bm.esegui_visura(req))
+
+    assert response.success is True
+    assert calls == ["T", "F"]
+    assert response.tipo_catasto == "F"
+    assert response.data["tipo_catasto_used"] == "F"
+    assert response.data["tipo_catasto_requested"] == "T"
+    assert response.data["fallback_used"] is True
+    assert response.data["total_results"] == 1
+
+
+def test_esegui_visura_no_fallback_when_disabled(monkeypatch):
+    """Senza fallback_other_catasto il NESSUNA CORRISPONDENZA viene mantenuto."""
+    calls = []
+
+    async def fake_run_visura(page, prov, com, sez, foglio, part, tipo, **kwargs):
+        calls.append(tipo)
+        return {"immobili": [], "results": [], "total_results": 0,
+                "intestati": [], "error": "NESSUNA CORRISPONDENZA TROVATA"}
+
+    monkeypatch.setattr("main.run_visura", fake_run_visura)
+
+    bm = main.BrowserManager()
+    bm.authenticated = True
+    bm.auth_page = object()
+
+    async def _noop():
+        return None
+    bm._ensure_authenticated = _noop  # type: ignore
+
+    req = VisuraRequest(
+        request_id="req_test", tipo_catasto="T", provincia="Roma", comune="Roma",
+        foglio="1", particella="1", fallback_other_catasto=False,
+    )
+    response = asyncio.run(bm.esegui_visura(req))
+
+    assert calls == ["T"]
+    assert response.data["tipo_catasto_used"] == "T"
+    assert response.data["fallback_used"] is False
+
+
+def test_esegui_visura_no_fallback_when_first_succeeds(monkeypatch):
+    """Se il primo tentativo trova risultati, il fallback non viene eseguito."""
+    calls = []
+
+    async def fake_run_visura(page, prov, com, sez, foglio, part, tipo, **kwargs):
+        calls.append(tipo)
+        return {"immobili": [{"x": 1}], "results": [{"x": 1}],
+                "total_results": 1, "intestati": []}
+
+    monkeypatch.setattr("main.run_visura", fake_run_visura)
+
+    bm = main.BrowserManager()
+    bm.authenticated = True
+    bm.auth_page = object()
+
+    async def _noop():
+        return None
+    bm._ensure_authenticated = _noop  # type: ignore
+
+    req = VisuraRequest(
+        request_id="req_test", tipo_catasto="T", provincia="Roma", comune="Roma",
+        foglio="1", particella="1", fallback_other_catasto=True,
+    )
+    response = asyncio.run(bm.esegui_visura(req))
+
+    assert calls == ["T"]
+    assert response.data["tipo_catasto_used"] == "T"
+    assert response.data["fallback_used"] is False

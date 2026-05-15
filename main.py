@@ -100,6 +100,7 @@ class VisuraRequest:
     sezione: Optional[str] = None
     subalterno: Optional[str] = None  # Opzionale: restringe la ricerca per fabbricati
     codice_belfiore: Optional[str] = None  # Opzionale: se valorizzato bypassa il match-by-name del comune
+    fallback_other_catasto: bool = False  # Se True e il primo tentativo NON trova nulla, riprova sull'altro catasto (T<->F)
     timestamp: datetime = None
 
     def __post_init__(self):
@@ -395,31 +396,74 @@ class BrowserManager:
                 raise AuthenticationError(f"Re-authentication failed: {e}") from e
 
     async def esegui_visura(self, request: VisuraRequest) -> VisuraResponse:
-        """Esegue una visura catastale (solo dati catastali, senza intestati)"""
+        """Esegue una visura catastale (solo dati catastali, senza intestati).
+
+        Se ``request.fallback_other_catasto`` e' True e il primo tentativo
+        restituisce ``NESSUNA CORRISPONDENZA TROVATA`` (total_results == 0),
+        ritenta automaticamente sull'altro catasto (T<->F) e annota
+        ``tipo_catasto_used`` e ``fallback_used`` nel campo ``data``.
+        """
         try:
             await self._ensure_authenticated()
 
-            try:
-                result = await run_visura(
+            async def _run(tipo: str):
+                return await run_visura(
                     self.auth_page,
                     request.provincia,
                     request.comune,
                     request.sezione,
                     request.foglio,
                     request.particella,
-                    request.tipo_catasto,
+                    tipo,
                     extract_intestati=False,
                     subalterno=request.subalterno,
                     codice_belfiore=request.codice_belfiore,
                 )
+
+            try:
+                result = await _run(request.tipo_catasto)
             except Exception as e:
                 raise BrowserError(f"Failed to execute visura: {e}") from e
 
-            logger.info(f"Visura completata per request {request.request_id}")
+            tipo_used = request.tipo_catasto
+            fallback_used = False
+            # Detect "not found": run_visura ritorna esplicitamente
+            # error="NESSUNA CORRISPONDENZA TROVATA" e total_results=0 in quel caso.
+            not_found = (
+                isinstance(result, dict)
+                and result.get("error") == "NESSUNA CORRISPONDENZA TROVATA"
+            )
+            if not_found and request.fallback_other_catasto:
+                other = "F" if request.tipo_catasto == "T" else "T"
+                logger.info(
+                    f"[FALLBACK] {request.request_id}: nessuna corrispondenza in "
+                    f"catasto '{request.tipo_catasto}', riprovo su '{other}'"
+                )
+                try:
+                    fallback_result = await _run(other)
+                except Exception as e:
+                    # Il fallback non deve mascherare il risultato originale: logga e tieni il primo
+                    logger.warning(f"[FALLBACK] fallito su catasto '{other}': {e}")
+                else:
+                    # Adotta il risultato del fallback solo se ha trovato qualcosa
+                    if isinstance(fallback_result, dict) and fallback_result.get("error") != "NESSUNA CORRISPONDENZA TROVATA":
+                        result = fallback_result
+                        tipo_used = other
+                        fallback_used = True
+
+            if isinstance(result, dict):
+                result["tipo_catasto_requested"] = request.tipo_catasto
+                result["tipo_catasto_used"] = tipo_used
+                result["fallback_used"] = fallback_used
+
+            logger.info(
+                f"Visura completata per request {request.request_id} "
+                f"(tipo={tipo_used}, fallback={fallback_used})"
+            )
             return VisuraResponse(
                 request_id=request.request_id,
                 success=True,
-                tipo_catasto=request.tipo_catasto,
+                tipo_catasto=tipo_used,
                 data=result,
             )
 
@@ -766,6 +810,15 @@ class VisuraInput(BaseModel):
             "per comuni con varianti ortografiche tra ISTAT e SISTER."
         ),
     )
+    fallback_other_catasto: bool = Field(
+        False,
+        description=(
+            "Se True e il primo tentativo restituisce 'NESSUNA CORRISPONDENZA TROVATA', "
+            "riprova automaticamente sull'altro catasto (T<->F). "
+            "Ha effetto solo se tipo_catasto e' valorizzato esplicitamente; quando tipo_catasto "
+            "e' omesso il backend gia' esegue T e F in parallelo come due richieste separate."
+        ),
+    )
 
     @validator("tipo_catasto")
     def validate_tipo_catasto(cls, v):
@@ -831,6 +884,9 @@ async def richiedi_visura(
         sezione = None if request.sezione == "_" else request.sezione
 
         tipos_catasto = [request.tipo_catasto] if request.tipo_catasto else ["T", "F"]
+        # Il fallback automatico ha senso solo quando l'utente specifica un singolo tipo:
+        # se omette tipo_catasto eseguiamo gia' T e F come richieste parallele indipendenti.
+        fallback_effective = bool(request.fallback_other_catasto) and request.tipo_catasto is not None
         request_ids = []
 
         for tipo_catasto in tipos_catasto:
@@ -845,6 +901,7 @@ async def richiedi_visura(
                 particella=request.particella,
                 subalterno=request.subalterno,
                 codice_belfiore=request.codice_belfiore,
+                fallback_other_catasto=fallback_effective,
             )
             await service.add_request(visura_req)
             request_ids.append(request_id)

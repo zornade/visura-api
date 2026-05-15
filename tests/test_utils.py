@@ -176,6 +176,30 @@ def test_find_best_option_match_catastal_alias_verbano_to_verbania():
     assert result == "VERBANIA"
 
 
+def test_find_best_option_match_catastal_alias_sud_sardegna_to_cagliari():
+    """Sud Sardegna (istituita 2016) → SISTER la mappa sotto CAGLIARI."""
+    page = _FakePageForMatch([
+        _FakeOption("CAGLIARI", "CAGLIARI Territorio"),
+        _FakeOption("CALTANISSETTA", "CALTANISSETTA Territorio"),
+    ])
+    result = asyncio.run(
+        utils.find_best_option_match(page, "select[name='listacom']", "Sud Sardegna")
+    )
+    assert result == "CAGLIARI"
+
+
+def test_find_best_option_match_catastal_alias_pesaro_e_urbino_to_pesaro():
+    """ISTAT `Pesaro e Urbino` → SISTER `PESARO Territorio`."""
+    page = _FakePageForMatch([
+        _FakeOption("PESARO", "PESARO Territorio"),
+        _FakeOption("PERUGIA", "PERUGIA Territorio"),
+    ])
+    result = asyncio.run(
+        utils.find_best_option_match(page, "select[name='listacom']", "Pesaro e Urbino")
+    )
+    assert result == "PESARO"
+
+
 def test_find_best_option_match_comune_with_grave_accent():
     """Caso F-NEW2: comune `Alì` (con accento grave) deve matchare `ALI'` / `ALI`."""
     page = _FakePageForMatch([

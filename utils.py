@@ -555,6 +555,12 @@ _CATASTAL_PROVINCE_ALIASES = {
     # ISTAT usa "Reggio nell'Emilia", SISTER espone solo "REGGIO EMILIA"
     # (confermato sperimentalmente, vedi AUDIT_REPORT_2026-05-15.md)
     "reggio nell emilia": "reggio emilia",
+    # Sud Sardegna è stata istituita nel 2016 ma SISTER (catasto) la mappa
+    # ancora sotto CAGLIARI Territorio (es. Carloforte, Buggerru, Iglesias,
+    # Senorbì). Scoperto nel bulk-test 89 particelle del 2026-05-15.
+    "sud sardegna": "cagliari",
+    # ISTAT usa "Pesaro e Urbino", SISTER espone solo "PESARO Territorio".
+    "pesaro e urbino": "pesaro",
 }
 
 
