@@ -547,8 +547,10 @@ def test_dropdown_cache_disabled_refetches_each_time(monkeypatch):
     assert calls["n"] == 2, f"expected 2 evaluate calls (cache off), got {calls['n']}"
 
 
-def test_find_option_by_codice_belfiore_uses_comune_cache(monkeypatch):
-    """Il path comune (select[name='denomComune']) deve passare dalla cache."""
+def test_find_option_by_codice_belfiore_no_cache_when_provincia_unknown(monkeypatch):
+    """Il path comune con provincia_value=None NON deve cachare (evita cross-province
+    poisoning, regressione 2026-05-15: Mantova comuni riusati per Savona/Pesaro).
+    Aspettato: una evaluate per chiamata."""
     page = _FakePageForMatch([
         _FakeOption("H501#ROMA#0#0", "ROMA"),
         _FakeOption("F205#MILANO#0#0", "MILANO"),
@@ -567,8 +569,10 @@ def test_find_option_by_codice_belfiore_uses_comune_cache(monkeypatch):
     r2 = asyncio.run(utils.find_option_by_codice_belfiore(page, "select[name='denomComune']", "F205"))
     assert r1 == "H501#ROMA#0#0"
     assert r2 == "F205#MILANO#0#0"
-    # Una sola evaluate: la seconda lookup serve dalla stessa cache
-    assert calls["n"] == 1, f"expected 1 evaluate call, got {calls['n']}"
+    # Due evaluate: nessuna cache senza provincia_value
+    assert calls["n"] == 2, f"expected 2 evaluate calls (no provincia_value), got {calls['n']}"
+    # Nessuna entry comune cachata
+    assert not any(k[0] == "comune" for k in utils._DROPDOWN_CACHE.keys())
 
 
 def test_invalidate_dropdown_cache_clears_state():

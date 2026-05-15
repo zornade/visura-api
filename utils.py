@@ -773,14 +773,18 @@ async def _get_province_options(page) -> dict:
 async def _get_comune_options(page, provincia_value: Optional[str]) -> dict:
     """Ritorna gli indici dei comuni per ``provincia_value``.
 
-    Cache key = ``("comune", provincia_value)``. Se ``provincia_value`` è ``None``
-    (caller non lo conosce — ramo legacy) usiamo ``""`` come chiave: cache
-    condivisa, comunque utile dentro la stessa request (più chiamate
-    sequenziali sulla stessa pagina post-applica).
+    Cache key = ``("comune", provincia_value)``. **IMPORTANTE**: la cache è
+    abilitata SOLO se ``provincia_value`` è truthy (es. ``"MANTOVA Territorio-MN"``).
+    Se è ``None`` o stringa vuota, NON cachiamo: i comuni cambiano per provincia
+    e una chiave condivisa ``""`` causerebbe cross-province poisoning (regressione
+    osservata 2026-05-15: Mantova 73 comuni → riusati per Savona/Pesaro/...).
+    Il chiamante legacy che non conosce provincia_value paga il singolo evaluate
+    per fetch (comunque rapido, ~3-5ms).
     """
     selector = "select[name='denomComune']"
-    key = ("comune", provincia_value or "")
-    if _dropdown_cache_enabled():
+    cache_ok = bool(provincia_value) and _dropdown_cache_enabled()
+    if cache_ok:
+        key = ("comune", provincia_value)
         cached = _DROPDOWN_CACHE.get(key)
         if cached is not None:
             print(
@@ -789,12 +793,15 @@ async def _get_comune_options(page, provincia_value: Optional[str]) -> dict:
             )
             return cached
         print(f"[CACHE] miss kind=comune provincia='{provincia_value}' fetching live")
+    elif not provincia_value:
+        # Path legacy: nessuna cache possibile (key collision risk)
+        pass
     else:
         print("[CACHE] disabled kind=comune (DROPDOWN_CACHE=0)")
     items = await _collect_options_fast(page, selector)
     idx = _build_comune_indexes(items)
-    if _dropdown_cache_enabled():
-        _DROPDOWN_CACHE[key] = idx
+    if cache_ok:
+        _DROPDOWN_CACHE[("comune", provincia_value)] = idx
         print(f"[CACHE] store kind=comune provincia='{provincia_value}' count={len(items)}")
     return idx
 
