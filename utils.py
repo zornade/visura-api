@@ -669,23 +669,29 @@ def _normalize_for_match(value: str) -> str:
 _DROPDOWN_CACHE: dict = {}
 
 
-async def _wait_for_ready(page, selector: str, timeout_ms: int = 30000, label: str = "") -> None:
-    """Attende che ``selector`` sia attached/visible nel DOM.
+async def _wait_for_ready(page, selector: str, timeout_ms: int = 15000, label: str = "") -> None:
+    """Attende che ``selector`` sia presente (``attached``) nel DOM.
 
     Sostituisce il pattern ``wait_for_load_state("domcontentloaded")`` quando
-    il vero "ready" del passo \u00e8 la presenza di un elemento target specifico
-    (es. la prossima ``<select>`` del form, il link "Immobile", la tabella
-    risultati). Ritorna appena il selector \u00e8 visibile (tipicamente molto
-    prima del DOMContentLoaded completo, perch\u00e9 SISTER carica asset extra
-    dopo che il form \u00e8 gi\u00e0 interattivo).
+    il vero "ready" del passo è la presenza di un elemento target specifico
+    (es. la prossima ``<select>`` del form, il link "Immobile"). Ritorna
+    appena il selector è ATTACHED nel DOM (non richiede visibility) — questo
+    è sufficiente per gli step successivi (``select_option``, ``click``,
+    ``page.evaluate`` per estrarre option) che fanno auto-wait di visibility
+    se serve, e copre i casi in cui SISTER nasconde temporaneamente l'elemento
+    durante transitions server-side. Lo stato ``visible`` è troppo stretto e
+    causa timeout su intermittenze di rendering (regressione live osservata
+    2026-05-15: 6 timeout su 97 req).
 
-    Diagnostica: stampa ``[WAIT] label='...' selector='...' elapsed=Yms`` per
-    grep delle latenze. In caso di timeout l'eccezione Playwright fa propagare
-    il contesto al chiamante.
+    Timeout default 15s (vs 30s di ``wait_for_load_state``) per fail-fast su
+    pagine che non caricano. Diagnostica: stampa
+    ``[WAIT] label='...' selector='...' elapsed=Yms`` per grep delle latenze.
+    In caso di timeout l'eccezione Playwright fa propagare il contesto al
+    chiamante.
     """
     t0 = time.time()
     try:
-        await page.wait_for_selector(selector, state="visible", timeout=timeout_ms)
+        await page.wait_for_selector(selector, state="attached", timeout=timeout_ms)
     finally:
         elapsed_ms = (time.time() - t0) * 1000
         print(f"[WAIT] label='{label}' selector='{selector}' elapsed={elapsed_ms:.0f}ms")
