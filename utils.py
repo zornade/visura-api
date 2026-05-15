@@ -669,6 +669,28 @@ def _normalize_for_match(value: str) -> str:
 _DROPDOWN_CACHE: dict = {}
 
 
+async def _wait_for_ready(page, selector: str, timeout_ms: int = 30000, label: str = "") -> None:
+    """Attende che ``selector`` sia attached/visible nel DOM.
+
+    Sostituisce il pattern ``wait_for_load_state("domcontentloaded")`` quando
+    il vero "ready" del passo \u00e8 la presenza di un elemento target specifico
+    (es. la prossima ``<select>`` del form, il link "Immobile", la tabella
+    risultati). Ritorna appena il selector \u00e8 visibile (tipicamente molto
+    prima del DOMContentLoaded completo, perch\u00e9 SISTER carica asset extra
+    dopo che il form \u00e8 gi\u00e0 interattivo).
+
+    Diagnostica: stampa ``[WAIT] label='...' selector='...' elapsed=Yms`` per
+    grep delle latenze. In caso di timeout l'eccezione Playwright fa propagare
+    il contesto al chiamante.
+    """
+    t0 = time.time()
+    try:
+        await page.wait_for_selector(selector, state="visible", timeout=timeout_ms)
+    finally:
+        elapsed_ms = (time.time() - t0) * 1000
+        print(f"[WAIT] label='{label}' selector='{selector}' elapsed={elapsed_ms:.0f}ms")
+
+
 def _dropdown_cache_enabled() -> bool:
     return os.getenv("DROPDOWN_CACHE", "1") == "1"
 
@@ -806,7 +828,12 @@ async def _get_comune_options(page, provincia_value: Optional[str]) -> dict:
     return idx
 
 
-async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: str) -> Optional[str]:
+async def find_option_by_codice_belfiore(
+    page,
+    selector: str,
+    codice_belfiore: str,
+    provincia_value: Optional[str] = None,
+) -> Optional[str]:
     """Trova un'option SISTER il cui ``value`` inizia con ``{codice_belfiore}#``.
 
     Le option di ``select[name='denomComune']`` in SISTER hanno valore nella
@@ -821,8 +848,11 @@ async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: s
     nel ``select`` ha quel prefisso.
 
     Implementazione (perf): usa ``_collect_options_fast`` (singolo evaluate)
-    con cache per-provincia. Se il selector non è quello dei comuni SISTER
-    fa fallback a un evaluate diretto senza cache.
+    con cache per-provincia se ``provincia_value`` è valorizzato (passare il
+    value della provincia già selezionata permette di cachare i comuni della
+    provincia corrente in modo sicuro, senza cross-province poisoning). Se
+    il selector non è quello dei comuni SISTER fa fallback a un evaluate
+    diretto senza cache.
     """
     if not codice_belfiore:
         return None
@@ -832,7 +862,7 @@ async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: s
     prefix = f"{cb}#"
     # Path veloce con cache per il selector standard dei comuni
     if selector == "select[name='denomComune']":
-        idx = await _get_comune_options(page, provincia_value=None)
+        idx = await _get_comune_options(page, provincia_value=provincia_value)
         value = idx["by_belfiore"].get(cb)
         if value:
             print(f"[MATCH_BELFIORE] hit cache cb='{cb}' -> '{value}'")
@@ -854,7 +884,7 @@ async def find_option_by_codice_belfiore(page, selector: str, codice_belfiore: s
     return None
 
 
-async def find_best_option_match(page, selector, search_text):
+async def find_best_option_match(page, selector, search_text, provincia_value: Optional[str] = None):
     """Trova l'opzione che meglio corrisponde al testo cercato.
 
     Il matching è tollerante a:
@@ -869,6 +899,10 @@ async def find_best_option_match(page, selector, search_text):
     L'ordine di priorità del matching è: exact value → exact text → starts-with
     → contains → match dell'alias catastale. Restituisce il ``value``
     dell'option scelta, oppure ``None`` se nessuna opzione è plausibile.
+
+    ``provincia_value`` (opzionale) è usato solo quando ``selector`` è
+    ``select[name='denomComune']``: passarlo abilita la cache comune
+    scope-per-provincia in modo sicuro (evita cross-province poisoning).
     """
     # Estrazione fast (single evaluate) + cache process-wide per i selector standard
     if selector == "select[name='listacom']":
@@ -881,7 +915,7 @@ async def find_best_option_match(page, selector, search_text):
             print(f"[MATCH] CACHE hit provincia '{search_text}' -> '{v}'")
             return v
     elif selector == "select[name='denomComune']":
-        idx = await _get_comune_options(page, provincia_value=None)
+        idx = await _get_comune_options(page, provincia_value=provincia_value)
         items = idx["items"]
         search_norm_pre = _normalize_for_match(search_text)
         if search_norm_pre and search_norm_pre in idx["by_norm"]:
@@ -1004,7 +1038,7 @@ async def run_visura(
     # STEP 1: Selezione Ufficio Provinciale
     print("[VISURA] Navigando alla pagina di scelta servizio...")
     await page.goto("https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=60000)
-    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+    await _wait_for_ready(page, "select[name='listacom']", label="visura_scelta_servizio")
     print("[VISURA] Pagina caricata")
     await logger.log(page, "scelta_servizio")
 
@@ -1060,14 +1094,18 @@ async def run_visura(
 
     print("[VISURA] Cliccando Applica...")
     await page.locator("input[type='submit'][value='Applica']").click()
-    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+    await _wait_for_ready(
+        page,
+        "a:has-text('Immobile'), [role='link']:has-text('Immobile')",
+        label="visura_post_applica",
+    )
     print("[VISURA] Applica cliccato, pagina caricata")
     await logger.log(page, "provincia_applicata")
 
     # STEP 2: Ricerca per immobili
     print("[VISURA] Cliccando link Immobile...")
     await page.get_by_role("link", name="Immobile").click()
-    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+    await _wait_for_ready(page, "select[name='denomComune']", label="visura_post_immobile")
     print("[VISURA] Link Immobile cliccato")
     await logger.log(page, "immobile")
 
@@ -1098,7 +1136,8 @@ async def run_visura(
     comune_value = None
     if codice_belfiore:
         comune_value = await find_option_by_codice_belfiore(
-            page, "select[name='denomComune']", codice_belfiore
+            page, "select[name='denomComune']", codice_belfiore,
+            provincia_value=provincia_value,
         )
         if not comune_value:
             print(
@@ -1107,7 +1146,10 @@ async def run_visura(
             )
 
     if not comune_value:
-        comune_value = await find_best_option_match(page, "select[name='denomComune']", comune)
+        comune_value = await find_best_option_match(
+            page, "select[name='denomComune']", comune,
+            provincia_value=provincia_value,
+        )
 
     if not comune_value:
         raise Exception(
@@ -1125,7 +1167,7 @@ async def run_visura(
     if sezione:
         print("[VISURA] Cliccando 'scegli la sezione' per attivare dropdown...")
         await page.locator("input[name='selSezione'][value='scegli la sezione']").click()
-        await page.wait_for_load_state("domcontentloaded", timeout=30000)
+        await _wait_for_ready(page, "select[name='sezione']", label="visura_sezione_open")
         print("[VISURA] Button sezione cliccato, dropdown attivato")
 
         # Prima estrai tutte le opzioni disponibili per debug (single evaluate via helper)
@@ -1668,7 +1710,7 @@ async def run_visura_immobile(
     # STEP 1: Selezione Ufficio Provinciale
     print("[VISURA_IMMOBILE] Navigando alla pagina di scelta servizio...")
     await page.goto("https://sister3.agenziaentrate.gov.it/Visure/SceltaServizio.do?tipo=/T/TM/VCVC_", timeout=60000)
-    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+    await _wait_for_ready(page, "select[name='listacom']", label="immobile_scelta_servizio")
     print("[VISURA_IMMOBILE] Pagina caricata")
     await logger.log(page, "scelta_servizio")
 
@@ -1688,13 +1730,17 @@ async def run_visura_immobile(
     await page.locator("select[name='listacom']").select_option(provincia_value)
     print("[VISURA_IMMOBILE] Cliccando Applica...")
     await page.locator("input[type='submit'][value='Applica']").click()
-    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+    await _wait_for_ready(
+        page,
+        "a:has-text('Immobile'), [role='link']:has-text('Immobile')",
+        label="immobile_post_applica",
+    )
     await logger.log(page, "provincia_applicata")
 
     # STEP 2: Ricerca per immobili
     print("[VISURA_IMMOBILE] Cliccando link Immobile...")
     await page.get_by_role("link", name="Immobile").click()
-    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+    await _wait_for_ready(page, "select[name='denomComune']", label="immobile_post_immobile")
     await logger.log(page, "immobile")
 
     # STEP 2.1: Seleziona tipo catasto FABBRICATI (F)
@@ -1706,7 +1752,8 @@ async def run_visura_immobile(
     comune_value = None
     if codice_belfiore:
         comune_value = await find_option_by_codice_belfiore(
-            page, "select[name='denomComune']", codice_belfiore
+            page, "select[name='denomComune']", codice_belfiore,
+            provincia_value=provincia_value,
         )
         if not comune_value:
             print(
@@ -1714,7 +1761,10 @@ async def run_visura_immobile(
                 f"fallback al match per nome '{comune}'"
             )
     if not comune_value:
-        comune_value = await find_best_option_match(page, "select[name='denomComune']", comune)
+        comune_value = await find_best_option_match(
+            page, "select[name='denomComune']", comune,
+            provincia_value=provincia_value,
+        )
 
     if not comune_value:
         raise Exception(f"Comune '{comune}' non trovato nelle opzioni disponibili")
@@ -1726,7 +1776,7 @@ async def run_visura_immobile(
     if sezione:
         print("[VISURA_IMMOBILE] Cliccando 'scegli la sezione' per attivare dropdown...")
         await page.locator("input[name='selSezione'][value='scegli la sezione']").click()
-        await page.wait_for_load_state("domcontentloaded", timeout=30000)
+        await _wait_for_ready(page, "select[name='sezione']", label="immobile_sezione_open")
 
         # Controlla se ci sono sezioni disponibili (single evaluate via helper)
         _sez_items_im = await _collect_options_fast(page, "select[name='sezione']")

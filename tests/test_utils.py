@@ -575,6 +575,71 @@ def test_find_option_by_codice_belfiore_no_cache_when_provincia_unknown(monkeypa
     assert not any(k[0] == "comune" for k in utils._DROPDOWN_CACHE.keys())
 
 
+def test_comune_cache_scoped_by_provincia(monkeypatch):
+    """Con provincia_value valorizzato la cache comune deve essere safe E attiva:
+    - stessa provincia → 1 evaluate per 2 lookup (cache hit)
+    - provincia diversa → 2 evaluate per 2 lookup (chiave diversa, no poisoning)
+    """
+    page = _FakePageForMatch([
+        _FakeOption("H501#ROMA#0#0", "ROMA"),
+        _FakeOption("F205#MILANO#0#0", "MILANO"),
+    ])
+    monkeypatch.setenv("DROPDOWN_CACHE", "1")
+    utils.invalidate_dropdown_cache(reason="test_setup")
+
+    calls = {"n": 0}
+    real = utils._collect_options_fast
+    async def counting(p, s):
+        calls["n"] += 1
+        return await real(p, s)
+    monkeypatch.setattr(utils, "_collect_options_fast", counting)
+
+    # Stessa provincia → seconda chiamata cache hit
+    r1 = asyncio.run(utils.find_option_by_codice_belfiore(
+        page, "select[name='denomComune']", "H501", provincia_value="ROMA Territorio-RM"))
+    r2 = asyncio.run(utils.find_option_by_codice_belfiore(
+        page, "select[name='denomComune']", "F205", provincia_value="ROMA Territorio-RM"))
+    assert r1 == "H501#ROMA#0#0"
+    assert r2 == "F205#MILANO#0#0"
+    assert calls["n"] == 1, f"expected 1 evaluate (same provincia), got {calls['n']}"
+
+    # Provincia diversa → cache miss separata (no poisoning)
+    r3 = asyncio.run(utils.find_option_by_codice_belfiore(
+        page, "select[name='denomComune']", "H501", provincia_value="MILANO Territorio-MI"))
+    assert r3 == "H501#ROMA#0#0"
+    assert calls["n"] == 2, f"expected 2 evaluate (diff provincia), got {calls['n']}"
+
+    # Chiavi cache distinte per provincia
+    keys = {k for k in utils._DROPDOWN_CACHE.keys() if k[0] == "comune"}
+    assert keys == {("comune", "ROMA Territorio-RM"), ("comune", "MILANO Territorio-MI")}
+
+
+def test_find_best_option_match_comune_uses_provincia_scoped_cache(monkeypatch):
+    """find_best_option_match con provincia_value valorizzato sfrutta la cache
+    comune scoped, senza cross-province poisoning."""
+    page = _FakePageForMatch([
+        _FakeOption("H501#ROMA#0#0", "ROMA"),
+        _FakeOption("F205#MILANO#0#0", "MILANO"),
+    ])
+    monkeypatch.setenv("DROPDOWN_CACHE", "1")
+    utils.invalidate_dropdown_cache(reason="test_setup")
+
+    calls = {"n": 0}
+    real = utils._collect_options_fast
+    async def counting(p, s):
+        calls["n"] += 1
+        return await real(p, s)
+    monkeypatch.setattr(utils, "_collect_options_fast", counting)
+
+    r1 = asyncio.run(utils.find_best_option_match(
+        page, "select[name='denomComune']", "ROMA", provincia_value="ROMA Territorio-RM"))
+    r2 = asyncio.run(utils.find_best_option_match(
+        page, "select[name='denomComune']", "MILANO", provincia_value="ROMA Territorio-RM"))
+    assert r1 == "H501#ROMA#0#0"
+    assert r2 == "F205#MILANO#0#0"
+    assert calls["n"] == 1, f"expected 1 evaluate (cache hit by provincia), got {calls['n']}"
+
+
 def test_invalidate_dropdown_cache_clears_state():
     utils._DROPDOWN_CACHE[("province",)] = {"items": [], "by_norm": {}}
     utils._DROPDOWN_CACHE[("comune", "")] = {"items": [], "by_norm": {}, "by_belfiore": {}}
