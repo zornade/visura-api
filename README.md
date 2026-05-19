@@ -33,6 +33,7 @@ Servizio REST per l'estrazione automatizzata di dati catastali dal portale **SIS
   - [Shutdown](#shutdown)
 - [Esempi d'uso](#esempi-duso)
 - [Logging e debug](#logging-e-debug)
+- [Protezione dati e retention](#protezione-dati-e-retention)
 - [Dettagli tecnici](#dettagli-tecnici)
 - [Sviluppo e contribuzione](#sviluppo-e-contribuzione)
 - [Risoluzione dei problemi](#risoluzione-dei-problemi)
@@ -582,6 +583,22 @@ Ogni file HTML include in testa dei commenti con metadati:
 ```
 
 > **Privacy:** la directory `logs/pages/` è nel `.gitignore` perché i file HTML contengono dati personali (codice fiscale, intestatari, indirizzi). Non committare mai questi file.
+
+---
+
+## Protezione dati e retention
+
+I dati estratti da SISTER e i log HTML generati da `PageLogger` possono contenere dati personali e informazioni patrimoniali. Chi esegue il servizio è responsabile della configurazione, conservazione, protezione e cancellazione di questi dati nel proprio ambiente.
+
+Raccomandazioni operative:
+
+- Imposta `LOG_PAGES=0` in produzione, salvo sessioni di debug mirate.
+- Conserva `logs/visura.log` e `logs/pages/` solo per il tempo necessario a diagnosi, audit tecnico o obblighi interni documentati.
+- Cancella o anonimizza i file HTML prima di condividerli in issue, PR, chat o ticket di supporto.
+- Proteggi l'accesso a `logs/`, backup e volumi Docker con gli stessi controlli usati per dati personali.
+- Definisci una procedura di retention esplicita per risultati in memoria, file di log e copie di backup.
+
+Il progetto non applica ancora un mascheramento automatico dei dati nei log HTML: verifica sempre manualmente i file prima di esportarli fuori dal tuo ambiente.
 
 ---
 
