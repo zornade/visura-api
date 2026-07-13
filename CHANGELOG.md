@@ -13,8 +13,8 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 - Configurazione CI con GitHub Actions
 - File pyproject.toml con metadati del progetto
 - File .env.example completo con tutte le variabili
-- Endpoint API per estrazione immobili (`POST /visura`) — accetta parametri catastali diretti
-- Endpoint API per estrazione intestati (`POST /visura/intestati`) — accetta parametri catastali diretti
+- Endpoint API per estrazione immobili (`POST /visura`) - accetta parametri catastali diretti
+- Endpoint API per estrazione intestati (`POST /visura/intestati`) - accetta parametri catastali diretti
 - Endpoint API per consultazione risultati (`GET /visura/{request_id}`)
 - Endpoint API per estrazione sezioni territoriali (`POST /sezioni/extract`)
 - Gestione automatica della sessione SISTER con keep-alive
@@ -27,7 +27,7 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 - **Variabile d'ambiente `PAGES_LOG_DIR`** per configurare la directory di salvataggio degli HTML loggati dal browser. Se non impostata e la directory di default (`./logs/pages`) non è scrivibile, viene usato automaticamente `/tmp/visura-api/logs/pages`; se anche quella fallisce, il logging delle pagine viene disabilitato silenziosamente senza interrompere il servizio.
 
 ### Rimosso
-- Rimossa dipendenza da PostgreSQL / SQLAlchemy — il servizio ora è completamente stateless
+- Rimossa dipendenza da PostgreSQL / SQLAlchemy - il servizio ora è completamente stateless
 - Rimosso modulo `database.py`
 - Rimossi endpoint che richiedevano il database (`GET /parcel/{parcel_fid}`, `GET /sezioni`, `GET /sezioni/stats`, `GET /sezioni/province`, `GET /sezioni/comuni/{provincia}`)
 - Rimosse dipendenze `sqlalchemy` e `psycopg[binary]`

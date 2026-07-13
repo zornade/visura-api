@@ -20,7 +20,7 @@ Partecipando a questo progetto accetti di rispettare il nostro [Codice di Condot
 
 ## Licenza dei contributi (DCO + grant di relicensing)
 
-`visura-api` è distribuito sotto **AGPL-3.0-only** ed è disponibile anche sotto **licenza commerciale separata** per chi non può/non vuole rispettare AGPL §13 (vedi [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md)). Per poter mantenere viable questo modello dual-license — che finanzia lo sviluppo del progetto — ogni contribuzione deve rispettare due condizioni:
+`visura-api` è distribuito sotto **AGPL-3.0-only** ed è disponibile anche sotto **licenza commerciale separata** per chi non può/non vuole rispettare AGPL §13 (vedi [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md)). Per poter mantenere viable questo modello dual-license - che finanzia lo sviluppo del progetto - ogni contribuzione deve rispettare due condizioni:
 
 ### 1. Developer Certificate of Origin (DCO)
 
@@ -59,7 +59,7 @@ Le PR palesemente generate da AI senza comprensione del progetto (selettori sbag
 ## Come segnalare un problema
 
 1. Controlla prima le [issue esistenti](https://github.com/zornade/visura-api/issues) per assicurarti che il problema non sia già stato segnalato
-2. Se è un problema di sicurezza, **NON** aprire una issue pubblica — segui le istruzioni in [SECURITY.md](SECURITY.md)
+2. Se è un problema di sicurezza, **NON** aprire una issue pubblica - segui le istruzioni in [SECURITY.md](SECURITY.md)
 3. Apri una nuova issue usando il template appropriato (Bug Report o Feature Request)
 
 ## Come proporre modifiche
@@ -132,12 +132,12 @@ cp .env.example .env
 
 Usiamo il formato [Conventional Commits](https://www.conventionalcommits.org/):
 
-- `feat:` — nuova funzionalità
-- `fix:` — correzione di un errore
-- `docs:` — modifiche alla documentazione
-- `refactor:` — ristrutturazione del codice senza cambi funzionali
-- `test:` — aggiunta o modifica di test
-- `ci:` — modifiche alla configurazione CI/CD
+- `feat:` - nuova funzionalità
+- `fix:` - correzione di un errore
+- `docs:` - modifiche alla documentazione
+- `refactor:` - ristrutturazione del codice senza cambi funzionali
+- `test:` - aggiunta o modifica di test
+- `ci:` - modifiche alla configurazione CI/CD
 
 ### Stile del codice
 

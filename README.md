@@ -6,7 +6,7 @@
 
 Servizio REST per l'estrazione automatizzata di dati catastali dal portale **SISTER** dell'Agenzia delle Entrate. Utilizza [Playwright](https://playwright.dev/python/) per pilotare un browser headless e [FastAPI](https://fastapi.tiangolo.com/) per esporre gli endpoint.
 
-> **Disclaimer legale** — Questo progetto è uno strumento indipendente e **non** è affiliato, approvato o supportato dall'Agenzia delle Entrate. L'utente è l'unico responsabile del rispetto dei termini di servizio del portale SISTER e della normativa vigente. L'uso di automazione sul portale potrebbe violare i termini d'uso del servizio.
+> **Disclaimer legale** - Questo progetto è uno strumento indipendente e **non** è affiliato, approvato o supportato dall'Agenzia delle Entrate. L'utente è l'unico responsabile del rispetto dei termini di servizio del portale SISTER e della normativa vigente. L'uso di automazione sul portale potrebbe violare i termini d'uso del servizio.
 
 > [!WARNING]  
 > Per poter attivare le API bisogna **prima** registrarsi e chiedere l'accesso ai servizi sister utilizzando l'Area Personale di Agenzia delle Entrate e poi cercando "sister" tra i servizi disponibili. L'operazione è veloce: https://www.agenziaentrate.gov.it/portale/adesione-ai-servizi-sister
@@ -47,20 +47,20 @@ Visura API permette di interrogare i dati catastali italiani tramite una semplic
 
 | Fase | Endpoint | Descrizione |
 |------|----------|-------------|
-| **1 — Immobili** | `POST /visura` | Cerca gli immobili associati a foglio + particella |
-| **2 — Intestati** | `POST /visura/intestati` | Recupera i titolari di uno specifico subalterno |
+| **1 - Immobili** | `POST /visura` | Cerca gli immobili associati a foglio + particella |
+| **2 - Intestati** | `POST /visura/intestati` | Recupera i titolari di uno specifico subalterno |
 
 Entrambe le richieste vengono accodate ed eseguite sequenzialmente su un singolo browser autenticato al portale SISTER. I risultati si recuperano in polling con `GET /visura/{request_id}`.
 
 ### Funzionalità principali
 
-- **Autenticazione SPID/SISTER automatizzata** — provider Sielte ID, PosteID o login diretto SISTER (selezionabile via `SPID_PROVIDER`)
-- **Coda sequenziale** — le richieste vengono processate una alla volta per non sovraccaricare il portale
-- **Ri-autenticazione automatica** — alla scadenza della sessione, il servizio tenta prima un recovery diretto e, solo se necessario, un nuovo login SPID
-- **Keep-alive** — la sessione viene mantenuta attiva con un light keep-alive ogni 30 secondi e un refresh profondo ogni 5 minuti
-- **Graceful shutdown** — su `SIGINT`/`SIGTERM` il servizio effettua il logout dal portale prima di chiudere il browser
-- **Logging HTML completo** — ogni pagina visitata dal browser viene salvata su disco per debug e audit
-- **Docker-ready** — immagine pronta con tutte le dipendenze di sistema per Chromium headless
+- **Autenticazione SPID/SISTER automatizzata** - provider Sielte ID, PosteID o login diretto SISTER (selezionabile via `SPID_PROVIDER`)
+- **Coda sequenziale** - le richieste vengono processate una alla volta per non sovraccaricare il portale
+- **Ri-autenticazione automatica** - alla scadenza della sessione, il servizio tenta prima un recovery diretto e, solo se necessario, un nuovo login SPID
+- **Keep-alive** - la sessione viene mantenuta attiva con un light keep-alive ogni 30 secondi e un refresh profondo ogni 5 minuti
+- **Graceful shutdown** - su `SIGINT`/`SIGTERM` il servizio effettua il logout dal portale prima di chiudere il browser
+- **Logging HTML completo** - ogni pagina visitata dal browser viene salvata su disco per debug e audit
+- **Docker-ready** - immagine pronta con tutte le dipendenze di sistema per Chromium headless
 
 ### Provider di autenticazione supportati
 
@@ -137,7 +137,7 @@ Client HTTP
 
 - **Python 3.11+** (testato fino a 3.13)
 - **Credenziali SPID** tramite provider Sielte ID con app MySielteID configurata
-- **Convenzione SISTER attiva** — l'utente deve avere un account abilitato sul portale SISTER
+- **Convenzione SISTER attiva** - l'utente deve avere un account abilitato sul portale SISTER
 
 Per Docker:
 - Docker Engine 20+
@@ -183,7 +183,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 All'avvio il servizio:
 
 1. Lancia un browser Chromium headless
-2. Esegue il login SPID — **approva la notifica push** sull'app MySielteID entro 120 secondi
+2. Esegue il login SPID - **approva la notifica push** sull'app MySielteID entro 120 secondi
 3. Naviga fino alla sezione Visure catastali del portale SISTER
 4. Avvia il keep-alive e il worker della coda
 5. Inizia ad accettare richieste su porta 8000
@@ -195,7 +195,7 @@ All'avvio il servizio:
 Crea un file `.env` nella root del progetto (vedi `.env.example`):
 
 ```env
-# Obbligatorio — Credenziali SPID (Sielte ID)
+# Obbligatorio - Credenziali SPID (Sielte ID)
 ADE_USERNAME=RSSMRA85M01H501Z    # Codice fiscale
 ADE_PASSWORD=la_tua_password
 
@@ -205,8 +205,8 @@ LOG_LEVEL=INFO                    # DEBUG | INFO | WARNING | ERROR
 
 | Variabile | Obbligatoria | Default | Descrizione |
 |-----------|:------------:|---------|-------------|
-| `ADE_USERNAME` | ✅ | — | Codice fiscale per il login SPID |
-| `ADE_PASSWORD` | ✅ | — | Password SPID (Sielte ID) |
+| `ADE_USERNAME` | ✅ | - | Codice fiscale per il login SPID |
+| `ADE_PASSWORD` | ✅ | - | Password SPID (Sielte ID) |
 | `LOG_LEVEL` | | `INFO` | Livello di log su console e file |
 
 ---
@@ -241,10 +241,10 @@ Cerca tutti gli immobili su una particella catastale. Se `tipo_catasto` è omess
 
 | Campo | Tipo | Obbligatorio | Default | Descrizione |
 |-------|------|:------------:|---------|-------------|
-| `provincia` | `string` | ✅ | — | Nome della provincia (es. `"Trieste"`) |
-| `comune` | `string` | ✅ | — | Nome del comune (es. `"TRIESTE"`) |
-| `foglio` | `string` | ✅ | — | Numero foglio |
-| `particella` | `string` | ✅ | — | Numero particella |
+| `provincia` | `string` | ✅ | - | Nome della provincia (es. `"Trieste"`) |
+| `comune` | `string` | ✅ | - | Nome del comune (es. `"TRIESTE"`) |
+| `foglio` | `string` | ✅ | - | Numero foglio |
+| `particella` | `string` | ✅ | - | Numero particella |
 | `sezione` | `string` | | `null` | Sezione censuaria (se presente) |
 | `tipo_catasto` | `string` | | `null` | `"T"` = Terreni, `"F"` = Fabbricati. Se omesso: entrambi |
 
@@ -273,7 +273,7 @@ curl -X POST http://localhost:8000/visura \
 }
 ```
 
-> **Nota:** per i Terreni (`T`) gli intestati vengono estratti automaticamente. Per i Fabbricati (`F`) vengono restituiti solo gli immobili — per ottenere gli intestati di un singolo fabbricato, usa la Fase 2.
+> **Nota:** per i Terreni (`T`) gli intestati vengono estratti automaticamente. Per i Fabbricati (`F`) vengono restituiti solo gli immobili - per ottenere gli intestati di un singolo fabbricato, usa la Fase 2.
 
 ---
 
@@ -289,11 +289,11 @@ Estrae i titolari (intestati) di uno specifico immobile. Per i Fabbricati è nec
 
 | Campo | Tipo | Obbligatorio | Default | Descrizione |
 |-------|------|:------------:|---------|-------------|
-| `provincia` | `string` | ✅ | — | Nome della provincia |
-| `comune` | `string` | ✅ | — | Nome del comune |
-| `foglio` | `string` | ✅ | — | Numero foglio |
-| `particella` | `string` | ✅ | — | Numero particella |
-| `tipo_catasto` | `string` | ✅ | — | `"T"` o `"F"` |
+| `provincia` | `string` | ✅ | - | Nome della provincia |
+| `comune` | `string` | ✅ | - | Nome del comune |
+| `foglio` | `string` | ✅ | - | Numero foglio |
+| `particella` | `string` | ✅ | - | Numero particella |
+| `tipo_catasto` | `string` | ✅ | - | `"T"` o `"F"` |
 | `subalterno` | `string` | Per `F` | `null` | Subalterno (obbligatorio per Fabbricati, vietato per Terreni) |
 | `sezione` | `string` | | `null` | Sezione censuaria |
 
@@ -339,7 +339,7 @@ Recupera lo stato e i dati di una richiesta precedentemente accodata.
 |--------|-------------|
 | `processing` | La richiesta è in coda o in esecuzione |
 | `completed` | Dati disponibili nel campo `data` |
-| `error` | Errore — dettagli nel campo `error` |
+| `error` | Errore - dettagli nel campo `error` |
 
 **Risposta completata (Fase 1):**
 
@@ -377,7 +377,7 @@ Recupera lo stato e i dati di una richiesta precedentemente accodata.
 }
 ```
 
-**Risposta completata (Fase 2 — intestati):**
+**Risposta completata (Fase 2 - intestati):**
 
 ```json
 {
@@ -425,7 +425,7 @@ Recupera lo stato e i dati di una richiesta precedentemente accodata.
 POST /sezioni/extract
 ```
 
-Estrae le sezioni censuarie per tutte le province e comuni d'Italia. **Operazione molto lenta** — può richiedere ore.
+Estrae le sezioni censuarie per tutte le province e comuni d'Italia. **Operazione molto lenta** - può richiedere ore.
 
 | Campo | Tipo | Default | Descrizione |
 |-------|------|---------|-------------|
@@ -543,7 +543,7 @@ LOG_LEVEL=DEBUG uvicorn main:app --host 0.0.0.0 --port 8000
 
 ### Log HTML delle pagine (`PageLogger`)
 
-Ogni pagina visitata dal browser viene salvata come file HTML su disco. Questo permette di ispezionare esattamente ciò che il browser ha visto in ogni punto del flusso — utile per debug, audit e sviluppo.
+Ogni pagina visitata dal browser viene salvata come file HTML su disco. Questo permette di ispezionare esattamente ciò che il browser ha visto in ogni punto del flusso - utile per debug, audit e sviluppo.
 
 **Struttura directory:**
 
@@ -601,7 +601,7 @@ Ogni file HTML include in testa dei commenti con metadati:
 - Pausa di **2 secondi** tra una richiesta e l'altra
 - Pausa di **5 secondi** dopo un errore
 - I risultati restano in memoria (`response_store`) fino al riavvio del servizio
-- Il client fa polling su `GET /visura/{request_id}` — restituisce `"processing"` finché il risultato non è pronto
+- Il client fa polling su `GET /visura/{request_id}` - restituisce `"processing"` finché il risultato non è pronto
 
 ### Graceful shutdown
 
@@ -626,9 +626,9 @@ Il browser viene lanciato con `handle_sigint=False, handle_sigterm=False` per im
 
 ### Flusso della visura
 
-1. Naviga a `SceltaServizio.do` — seleziona provincia — clicca Applica
-2. Clicca "Immobile" — seleziona tipo catasto (`T`/`F`), comune, compila foglio e particella
-3. Clicca "Ricerca" — gestisce eventuale "conferma assenza subalterno"
+1. Naviga a `SceltaServizio.do` - seleziona provincia - clicca Applica
+2. Clicca "Immobile" - seleziona tipo catasto (`T`/`F`), comune, compila foglio e particella
+3. Clicca "Ricerca" - gestisce eventuale "conferma assenza subalterno"
 4. Se "NESSUNA CORRISPONDENZA TROVATA" → ritorna risultato vuoto con `.error`
 5. Estrae la tabella immobili (`table.listaIsp4`)
 6. Per ogni immobile (radio button): seleziona → clicca "Intestati" → estrae tabella intestatari → torna indietro
@@ -661,20 +661,20 @@ cp .env.example .env
 - Modelli Pydantic di input (`VisuraInput`, `VisuraIntestatiInput`, `SezioniExtractionRequest`)
 - Dataclass interne (`VisuraRequest`, `VisuraResponse`, `VisuraIntestatiRequest`)
 - Eccezioni custom (`VisuraError`, `AuthenticationError`, `BrowserError`, `ValidationError`)
-- `BrowserManager` — gestione browser, login, keep-alive, session recovery
-- `VisuraService` — coda, worker, store risultati
+- `BrowserManager` - gestione browser, login, keep-alive, session recovery
+- `VisuraService` - coda, worker, store risultati
 - Lifespan FastAPI (startup/shutdown)
 - Tutti gli endpoint REST
 
 **`utils.py`** contiene:
-- `PageLogger` — salva HTML di ogni pagina visitata, organizzato per sessione/flusso/step
-- `login(page, username, password)` — flusso SPID completo (15 step, ciascuno loggato)
-- `logout(page)` — cerca e clicca "Esci" con fallback su più selettori CSS
-- `run_visura(page, ...)` — visura completa: selezione provincia → estrazione intestati
-- `run_visura_immobile(page, ...)` — visura mirata per un singolo fabbricato con subalterno
-- `extract_all_sezioni(page, ...)` — iterazione su tutte le province/comuni per estrarre sezioni
-- `find_best_option_match(page, selector, text)` — fuzzy matching a 5 livelli su dropdown `<select>`
-- `parse_table(html)` — parsing tabelle HTML con BeautifulSoup → lista di dizionari
+- `PageLogger` - salva HTML di ogni pagina visitata, organizzato per sessione/flusso/step
+- `login(page, username, password)` - flusso SPID completo (15 step, ciascuno loggato)
+- `logout(page)` - cerca e clicca "Esci" con fallback su più selettori CSS
+- `run_visura(page, ...)` - visura completa: selezione provincia → estrazione intestati
+- `run_visura_immobile(page, ...)` - visura mirata per un singolo fabbricato con subalterno
+- `extract_all_sezioni(page, ...)` - iterazione su tutte le province/comuni per estrarre sezioni
+- `find_best_option_match(page, selector, text)` - fuzzy matching a 5 livelli su dropdown `<select>`
+- `parse_table(html)` - parsing tabelle HTML con BeautifulSoup → lista di dizionari
 
 ### Aggiungere un provider SPID
 
@@ -722,7 +722,7 @@ Leggi [CONTRIBUTING.md](CONTRIBUTING.md) per il dettaglio completo. In breve:
 
 - Crea un branch dal `main` con un nome descrittivo (`fix/...`, `feat/...`)
 - Ogni modifica significativa deve includere i log `PageLogger` nei punti critici
-- **Mai committare** file da `logs/` — contengono dati personali
+- **Mai committare** file da `logs/` - contengono dati personali
 - Rimuovi le credenziali dai log prima di condividerli in una issue
 
 ---
@@ -740,7 +740,7 @@ Leggi [CONTRIBUTING.md](CONTRIBUTING.md) per il dettaglio completo. In breve:
 | Chromium non si avvia in Docker | Dipendenze di sistema mancanti | Usa il Dockerfile fornito che include tutte le librerie necessarie |
 | Log HTML vuoti o mancanti | Errore durante il salvataggio | Controlla i permessi sulla directory `logs/pages/` |
 
-Per debug approfondito, ispeziona i file HTML in `logs/pages/` — mostrano esattamente cosa vedeva il browser in ogni step.
+Per debug approfondito, ispeziona i file HTML in `logs/pages/` - mostrano esattamente cosa vedeva il browser in ogni step.
 
 ---
 
@@ -754,7 +754,7 @@ Copyright © 2026 [zornade](https://zornade.com).
 
 ## Licenza
 
-Distribuito sotto licenza **[GNU Affero General Public License v3.0 — only](LICENSE)** (`SPDX-License-Identifier: AGPL-3.0-only`).
+Distribuito sotto licenza **[GNU Affero General Public License v3.0 - only](LICENSE)** (`SPDX-License-Identifier: AGPL-3.0-only`).
 
 Vedi anche il file [`NOTICE`](NOTICE) per il testo completo dell'avviso di copyright e per le obbligazioni AGPL §13 imposte agli operatori di servizi di rete.
 
@@ -774,7 +774,7 @@ AGPL-3.0 è una **strong copyleft network license**. In particolare la clausola 
 1. **Mantenere AGPL-3.0** in tutte le distribuzioni del fork. Non puoi rilicenziare ad Apache, MIT, BSD, GPL-2, GPL-3 o altre licenze.
 2. **Preservare** il file `LICENSE`, il file `NOTICE`, gli header SPDX e i credit all'autore originale in ogni copia distribuita o ridistribuita.
 3. **Pubblicare le tue modifiche** al codice base sotto AGPL-3.0, includendo l'intera storia git delle modifiche.
-4. **Se esponi il fork (o un suo derivato) come servizio di rete** — SaaS, B2B API, dashboard, microservizio, intranet — devi offrire a tutti gli utenti del servizio l'accesso pubblico al *Corresponding Source* completo dell'opera combinata, comprese:
+4. **Se esponi il fork (o un suo derivato) come servizio di rete** - SaaS, B2B API, dashboard, microservizio, intranet - devi offrire a tutti gli utenti del servizio l'accesso pubblico al *Corresponding Source* completo dell'opera combinata, comprese:
    - le tue modifiche al codice base,
    - **tutte le componenti private linkate o combinate** col servizio (autenticazione, SPID/CIE adapter, frontend, theme, orchestratori, workflow engines, moduli di scoring, integrazioni Stripe/Clerk/CRM, schema DB e migrations Alembic, Dockerfile, Helm chart, IaC),
    - le installation information necessarie a ricostruire un deploy comparabile.
