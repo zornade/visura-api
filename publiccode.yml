@@ -1,0 +1,85 @@
+publiccodeYmlVersion: "0.4"
+
+name: Visura API
+url: "https://github.com/zornade/visura-api.git"
+landingURL: "https://github.com/zornade/visura-api"
+
+softwareVersion: "0.1.0"
+
+platforms:
+  - web
+
+categories:
+  - data-collection
+  - real-estate-management
+  - property-management
+
+developmentStatus: stable
+
+softwareType: "standalone/backend"
+
+intendedAudience:
+  scope:
+    - government
+  countries:
+    - IT
+
+description:
+  it:
+    localisedName: Visura API
+    shortDescription: >
+      API REST open source per estrarre visure catastali (immobili e
+      intestatari) dal portale SISTER dell'Agenzia delle Entrate.
+    longDescription: >
+      Visura API è un servizio REST open source che automatizza l'estrazione
+      di dati catastali italiani dal portale SISTER dell'Agenzia delle
+      Entrate, sostituendo un processo manuale con una semplice interfaccia
+      HTTP. Utilizza Playwright per pilotare un browser headless autenticato
+      via SPID (provider Sielte ID o PosteID) oppure con login diretto
+      SISTER, e FastAPI per esporre gli endpoint REST.
+
+
+      Il flusso operativo è diviso in due fasi: la ricerca degli immobili
+      associati a un foglio e una particella catastale, e il successivo
+      recupero dei titolari (intestati) di uno specifico subalterno. Le
+      richieste vengono accodate ed eseguite in sequenza su un'unica sessione
+      di browser autenticata, con ri-autenticazione automatica alla scadenza
+      della sessione, keep-alive periodico e un meccanismo di graceful
+      shutdown che effettua il logout dal portale prima di terminare.
+
+
+      Il progetto è pensato per professionisti, agenzie immobiliari,
+      sviluppatori e pubbliche amministrazioni che devono integrare la
+      consultazione catastale in flussi di lavoro automatizzati, nel
+      rispetto dei termini d'uso del portale SISTER e della normativa
+      vigente. È distribuito con un'immagine Docker pronta all'uso e
+      documentazione completa degli endpoint.
+    documentation: "https://github.com/zornade/visura-api#readme"
+    apiDocumentation: "https://github.com/zornade/visura-api#endpoint-api"
+    features:
+      - Autenticazione automatizzata al portale SISTER (SPID Sielte ID, SPID PosteID, login diretto SISTER)
+      - Ricerca immobili per foglio e particella catastale
+      - Recupero titolari (intestati) per subalterno
+      - Coda sequenziale delle richieste su singola sessione browser
+      - Ri-autenticazione automatica alla scadenza della sessione
+      - Keep-alive periodico della sessione autenticata
+      - Graceful shutdown con logout automatico dal portale
+      - Logging HTML completo per debug e audit
+      - Interfaccia REST (FastAPI) con polling dei risultati
+      - Immagine Docker pronta con tutte le dipendenze di sistema
+
+legal:
+  license: AGPL-3.0-only
+  mainCopyrightOwner: "Zornade"
+
+maintenance:
+  type: community
+  contacts:
+    - name: "Enrico Pascatti"
+      email: "hello@zornade.com"
+      affiliation: "Zornade"
+
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - it
