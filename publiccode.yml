@@ -1,0 +1,80 @@
+publiccodeYmlVersion: "0.2"
+name: visura-api
+url: "https://github.com/zornade/visura-api"
+softwareVersion: "1.0.0"
+releaseDate: "2026-03-04"
+landingURL: "https://zornade.com"
+platforms:
+  - web
+categories:
+  - geographic-information-systems
+  - data-collection
+  - real-estate-management
+developmentStatus: stable
+softwareType: standalone/backend
+description:
+  it:
+    localisedName: visura-api
+    genericName: API catastale italiana
+    shortDescription: |
+      API REST per l'estrazione automatizzata di dati catastali dal portale SISTER
+      dell'Agenzia delle Entrate. Utilizza browser automation per fornire visure,
+      intestatari e sezioni censuarie in formato JSON strutturato.
+    longDescription: |
+      visura-api è un servizio open source che trasforma il portale SISTER
+      dell'Agenzia delle Entrate in un'API REST. Il portale SISTER non espone
+      interfacce programmatiche: visura-api colma questa lacuna pilotando un
+      browser headless (Playwright + Chromium) che esegue l'autenticazione SPID,
+      compila i form e restituisce i dati catastali in JSON strutturato.
+      
+      Funzionalità principali:
+      - Visura immobili per foglio/particella (terreni e fabbricati)
+      - Estrazione intestatari con quote di proprietà
+      - Estrazione sezioni censuarie per provincia
+      - Coda sequenziale con polling asincrono
+      - Ri-autenticazione automatica su scadenza sessione
+      - Container Docker con Chromium headless preconfigurato
+      
+      Supporta autenticazione SPID (Sielte ID, PosteID) e login diretto SISTER.
+      Progettato per professionisti del settore immobiliare, studi notarili,
+      sviluppatori PropTech e PA che necessitano di accesso programmatico ai
+      dati catastali italiani.
+  en:
+    localisedName: visura-api
+    genericName: Italian Cadastral API
+    shortDescription: |
+      REST API for automated extraction of Italian cadastral data from the
+      Agenzia delle Entrate SISTER portal. Uses browser automation to provide
+      property records, ownership data, and census sections in structured JSON.
+    longDescription: |
+      visura-api is an open source service that transforms the Italian tax
+      authority's SISTER portal into a REST API. SISTER has no programmatic
+      interface: visura-api bridges this gap by driving a headless browser
+      (Playwright + Chromium) that handles SPID authentication, form filling,
+      and returns cadastral data as structured JSON.
+      
+      Key features:
+      - Property search by land parcel ID (cadastral sheet + parcel)
+      - Ownership extraction with share percentages
+      - Census section extraction by province
+      - Sequential queue with async polling
+      - Automatic re-authentication on session expiry
+      - Docker container with preconfigured headless Chromium
+      
+      Supports SPID authentication (Sielte ID, PosteID) and direct SISTER login.
+      Designed for real estate professionals, notary offices, PropTech developers,
+      and public administrations needing programmatic access to Italian cadastral
+      data.
+legal:
+  license: AGPL-3.0-only
+  repoOwner: "Zornade"
+maintenance:
+  type: internal
+  contacts:
+    - name: Zornade
+      email: "hello@zornade.com"
+localisation:
+  localisationReady: true
+  availableLanguages:
+    - it
+    - en
