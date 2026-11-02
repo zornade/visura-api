@@ -1,0 +1,57 @@
+name: SBOM
+
+# Inventario delle dipendenze (CycloneDX) a ogni rilascio, conservato come
+# artefatto. Vedi SECURITY.md e app/docs/CRA.md sul sito.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cyclonedx:
+    name: SBOM CycloneDX
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cyclonedx-bom
+
+      - name: Genera SBOM
+        # La modalita' "environment" registra le versioni esatte risolte, non
+        # quelle dichiarate: requirements.txt ha voci senza pin (beautifulsoup4,
+        # python-dotenv, email-validator, pytest) che in modalita' "requirements"
+        # finirebbero nell'SBOM senza numero di versione.
+        run: cyclonedx-py environment --output-file sbom.cdx.json --output-format JSON
+
+      - name: Controlla che l'SBOM non sia vuoto
+        run: |
+          python - <<'PY'
+          import json, sys
+          with open("sbom.cdx.json") as fh:
+              data = json.load(fh)
+          componenti = len(data.get("components", []))
+          print(f"componenti inventariati: {componenti}")
+          sys.exit(0 if componenti > 0 else 1)
+          PY
+
+      - name: Conserva l'SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 400
+          if-no-files-found: error

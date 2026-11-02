@@ -1,6 +1,6 @@
-# Licenza commerciale — Visura API
+# Licenza commerciale - Visura API
 
-> **TL;DR** — `visura-api` è distribuito sotto licenza **AGPL-3.0-only**.
+> **TL;DR** - `visura-api` è distribuito sotto licenza **AGPL-3.0-only**.
 > Se vuoi usarlo in un servizio commerciale proprietario senza dover pubblicare
 > il codice sorgente del tuo sistema combinato (auth, frontend, orchestratori,
 > domini), è disponibile una **licenza commerciale separata** acquistabile da
@@ -11,7 +11,7 @@
 ## Quando ti serve una licenza commerciale
 
 La licenza AGPL-3.0-only impone obblighi forti **sia in caso di redistribuzione
-del software**, sia — punto critico — **in caso di uso in rete** (clausola §13,
+del software**, sia - punto critico - **in caso di uso in rete** (clausola §13,
 "Remote Network Interaction"). In sintesi, se metti online un servizio basato
 su `visura-api` modificato, devi offrire pubblicamente il *Corresponding Source*
 completo della tua opera combinata.

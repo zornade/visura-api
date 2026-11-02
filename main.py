@@ -171,7 +171,7 @@ class BrowserManager:
             quando si sospetta che il blocking causi failure).
           - ``RESOURCE_BLOCK_TYPES`` override CSV dei tipi bloccati
             (default: ``image,font,media``). Per essere conservativi ``stylesheet``
-            NON e' bloccato di default — alcuni check di visibility Playwright
+            NON e' bloccato di default - alcuni check di visibility Playwright
             possono dipendere da CSS computed.
           - Counter cumulativo (``blocked_resources_count``) + sample dei primi
             10 URL (``blocked_resources_samples``) esposti su ``BrowserManager``
@@ -227,7 +227,7 @@ class BrowserManager:
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
-                handle_sigint=False,  # Non chiudere Chromium su Ctrl+C — gestiamo noi il logout
+                handle_sigint=False,  # Non chiudere Chromium su Ctrl+C - gestiamo noi il logout
                 handle_sigterm=False,  # Idem per SIGTERM
                 args=[
                     # NB: '--single-process' e '--no-zygote' rimossi: causano
@@ -265,13 +265,13 @@ class BrowserManager:
 
         Distingue due classi di errore:
 
-        * ``PlaywrightTimeoutError`` — tipicamente la push SPID non e' stata
+        * ``PlaywrightTimeoutError`` - tipicamente la push SPID non e' stata
           approvata in tempo dall'utente (timeout 120s sul click 'Autorizza'
           per Sielte o sul redirect post-push per Poste). Ritentiamo fino a
           ``LOGIN_MAX_ATTEMPTS`` (default 3) volte, con un breve sleep tra
           tentativi per evitare push back-to-back.
         * Altri errori (``RuntimeError`` fail-fast su credenziali sbagliate,
-          ``BrowserError``, ecc.) — falliscono al primo colpo perche'
+          ``BrowserError``, ecc.) - falliscono al primo colpo perche'
           ritentare e' inutile (le credenziali errate restano errate).
         """
         max_attempts = max(1, int(os.getenv("LOGIN_MAX_ATTEMPTS", "3")))
@@ -297,7 +297,7 @@ class BrowserManager:
                 logger.info(f"Login completato con successo al tentativo {attempt}")
                 return
             except PlaywrightTimeoutError as e:
-                # Push SPID non approvata in tempo — utente probabilmente
+                # Push SPID non approvata in tempo - utente probabilmente
                 # distratto o push arrivata in ritardo. Ritentiamo.
                 last_exc = e
                 logger.warning(
@@ -840,7 +840,7 @@ async def lifespan(app: FastAPI):
     await visura_service.initialize()
     logger.info("Servizio visure avviato")
     yield
-    # Shutdown — uvicorn arriva qui dopo SIGINT/SIGTERM
+    # Shutdown - uvicorn arriva qui dopo SIGINT/SIGTERM
     logger.info("Shutdown in corso, eseguendo logout...")
     if visura_service:
         await visura_service.graceful_shutdown()

@@ -4,13 +4,15 @@ name: Visura API
 url: "https://github.com/zornade/visura-api.git"
 landingURL: "https://github.com/zornade/visura-api"
 
-softwareVersion: "0.1.0"
+softwareVersion: "1.0.0"
+releaseDate: "2026-11-02"
 
 platforms:
   - web
 
 categories:
   - data-collection
+  - geographic-information-systems
   - real-estate-management
   - property-management
 

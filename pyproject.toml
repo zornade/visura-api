@@ -4,7 +4,7 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "visura-api"
-version = "0.1.0"
+version = "1.0.0"
 description = "Servizio API per l'estrazione automatizzata di dati catastali dal portale SISTER dell'Agenzia delle Entrate"
 readme = "README.md"
 license = {text = "AGPL-3.0-only"}
@@ -68,3 +68,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+# Senza questa riga pytest-asyncio avvisa a ogni esecuzione che in futuro
+# cambiera' lo scope predefinito dei fixture asincroni. Impostarlo ora evita
+# che un aggiornamento del plugin cambi il comportamento dei test in silenzio.
+asyncio_default_fixture_loop_scope = "function"

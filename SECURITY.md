@@ -7,7 +7,7 @@ Se trovi una vulnerabilità di sicurezza in Visura API, **NON** aprire una issue
 Invece, segnalala in modo responsabile tramite uno dei seguenti canali:
 
 1. **GitHub Security Advisory**: usa la funzione [Segnala una vulnerabilità](https://github.com/zornade/visura-api/security/advisories/new) direttamente su GitHub
-2. **Email**: contatta i manutentori tramite il profilo GitHub
+2. **Email**: `sicurezza@zornade.com`, la casella dedicata delle segnalazioni
 
 ### Cosa includere nella segnalazione
 
@@ -47,8 +47,8 @@ Questo progetto interagisce con dati catastali che possono contenere informazion
 ## Versioni supportate
 
 | Versione | Supportata |
-|----------|-----------|
-| Ultima   | Sì        |
-| Vecchie  | No        |
+|---|---|
+| Ultima release | Sì, per 5 anni dalla data di rilascio |
+| Versioni precedenti | La correzione arriva sull'ultima release, che si aggiorna senza costi |
 
-Solo l'ultima versione del progetto riceve aggiornamenti di sicurezza.
+Il periodo di cinque anni è quello previsto dal Cyber Resilience Act come regola generale. Chi ha un contratto di continuità riceve nell'atto di acquisto la data di fine supporto della versione consegnata, indicata come mese e anno. L'aggiornamento non è mai condizionato al pagamento di un canone. Dettagli su SBOM, Dependabot e segnalazione alle autorità nel documento pubblico [docs/CRA.md](https://github.com/menimenocchio/zornade-app/blob/main/docs/CRA.md).
