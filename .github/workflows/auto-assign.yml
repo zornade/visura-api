@@ -20,4 +20,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Assign PR author as assignee
-        uses: toshimaru/auto-author-assign@16f0022cf3d7970c106d8d1105f75a1165edb516 # v2.1.1
+        uses: toshimaru/auto-author-assign@a78a94b219445cece8ccf0d45fec60af449f212a # v3.1.0
