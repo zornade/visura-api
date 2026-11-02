@@ -5,7 +5,7 @@ name: Auto-assign PR author
 #
 # Usa `pull_request_target` per poter scrivere sui PR aperti da fork esterni
 # (il token del fork non avrebbe i permessi `pull-requests: write`).
-# Lo scope è strettamente limitato a scrivere assignment sulla PR — nessuna
+# Lo scope è strettamente limitato a scrivere assignment sulla PR - nessuna
 # esecuzione di codice della PR avviene in questo job.
 
 on:

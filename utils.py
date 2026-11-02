@@ -148,7 +148,7 @@ class PageLogger:
 
         Disabilitabile via env ``LOG_PAGES=0`` (default: ``1``). Quando off,
         ritorna immediatamente senza chiamare ``page.content()`` né scrivere
-        su disco — riduce ~0.5-2s/richiesta su success path.
+        su disco - riduce ~0.5-2s/richiesta su success path.
         """
         self.step += 1
         if os.getenv("LOG_PAGES", "1") != "1":
@@ -193,8 +193,8 @@ async def _login_sielte(page: Page, logger: PageLogger, username: str, password:
     """Esegue l'autenticazione SPID tramite provider Sielte ID (MySielteID).
 
     Credenziali richieste:
-        ADE_USERNAME — codice fiscale o partita IVA dell'account Sielte
-        ADE_PASSWORD — password dell'account Sielte
+        ADE_USERNAME - codice fiscale o partita IVA dell'account Sielte
+        ADE_PASSWORD - password dell'account Sielte
 
     Il secondo fattore è gestito tramite notifica push sull'app MySielteID:
     l'utente approva sull'app e clicca 'Autorizza' (timeout 120s).
@@ -248,7 +248,7 @@ async def _login_sielte(page: Page, logger: PageLogger, username: str, password:
         # ``LOGIN_AUTORIZZA_APPEAR_TIMEOUT_S`` (default 15).
         appear_timeout_s = int(os.getenv("LOGIN_AUTORIZZA_APPEAR_TIMEOUT_S", "15"))
         print(
-            f"[LOGIN] Attendo pulsante 'Autorizza' (max {appear_timeout_s}s) — "
+            f"[LOGIN] Attendo pulsante 'Autorizza' (max {appear_timeout_s}s) - "
             f"se non appare = credenziali probabilmente errate"
         )
         try:
@@ -276,8 +276,8 @@ async def _login_poste(page: Page, logger: PageLogger, username: str, password: 
     """Esegue l'autenticazione SPID tramite provider Poste Italiane (PosteID).
 
     Credenziali richieste:
-        POSTE_USERNAME — indirizzo email dell'account PosteID
-        POSTE_PASSWORD — password dell'account PosteID
+        POSTE_USERNAME - indirizzo email dell'account PosteID
+        POSTE_PASSWORD - password dell'account PosteID
 
     Il secondo fattore è gestito tramite notifica push sull'app PosteID:
     l'utente approva sull'app e la pagina si reindirizza automaticamente
@@ -312,7 +312,7 @@ async def _login_poste(page: Page, logger: PageLogger, username: str, password: 
         # poi il timeout lungo per l'approvazione vera e propria.
         appear_timeout_s = int(os.getenv("LOGIN_POSTE_PUSH_APPEAR_TIMEOUT_S", "15"))
         print(
-            f"[LOGIN] Attendo transizione push PosteID (max {appear_timeout_s}s) — "
+            f"[LOGIN] Attendo transizione push PosteID (max {appear_timeout_s}s) - "
             f"se rimane sulla form = credenziali probabilmente errate"
         )
         try:
@@ -347,11 +347,11 @@ async def login(page: Page):
     Il provider di autenticazione è selezionato dalla variabile d'ambiente
     ``SPID_PROVIDER`` (case-insensitive):
 
-    * ``sielte`` (default) — SPID Sielte ID, credenziali ``ADE_USERNAME`` /
+    * ``sielte`` (default) - SPID Sielte ID, credenziali ``ADE_USERNAME`` /
       ``ADE_PASSWORD``.
-    * ``poste`` — SPID PosteID, credenziali ``POSTE_USERNAME`` /
+    * ``poste`` - SPID PosteID, credenziali ``POSTE_USERNAME`` /
       ``POSTE_PASSWORD``.
-    * ``sister`` — login diretto SISTER tramite il tab dedicato della pagina
+    * ``sister`` - login diretto SISTER tramite il tab dedicato della pagina
       ADE, credenziali ``SISTER_USERNAME`` / ``SISTER_PASSWORD``. Pensato per
       l'**intestatario** di una convenzione SISTER che vuole automatizzare le
       proprie consultazioni con le proprie credenziali nominali (vedi README,
@@ -465,8 +465,8 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
     """Esegue il login diretto SISTER tramite il tab dedicato sulla pagina ADE.
 
     Credenziali richieste:
-        SISTER_USERNAME — username dell'account SISTER nominale dell'utente
-        SISTER_PASSWORD — password dell'account SISTER nominale dell'utente
+        SISTER_USERNAME - username dell'account SISTER nominale dell'utente
+        SISTER_PASSWORD - password dell'account SISTER nominale dell'utente
 
     Scope d'uso ammesso: questo flusso è destinato all'**intestatario della
     convenzione SISTER** che desidera automatizzare le proprie consultazioni
@@ -524,7 +524,7 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
         while _is_orphan(content, url) and attempts_done < MAX_CLOSE_ATTEMPTS:
             attempts_done += 1
             print(
-                f"[LOGIN] Sessione orfana rilevata (tentativo {attempts_done}/{MAX_CLOSE_ATTEMPTS}) — chiudo e riprovo..."
+                f"[LOGIN] Sessione orfana rilevata (tentativo {attempts_done}/{MAX_CLOSE_ATTEMPTS}) - chiudo e riprovo..."
             )
             step = f"close_session_{attempts_done}"
             await page.goto(
@@ -569,7 +569,7 @@ async def _login_sister_direct(page: Page, logger: PageLogger, username: str, pa
 _CATASTAL_PROVINCE_ALIASES = {
     "verbano cusio ossola": "verbania",
     # ISTAT "Monza e della Brianza" (istituita 2009): SISTER non la espone come
-    # ufficio provinciale catastale separato — i comuni della Brianza restano
+    # ufficio provinciale catastale separato - i comuni della Brianza restano
     # catastalmente sotto "MILANO Territorio" (confermato bulk-test
     # 2026-05-15, p.es. Misinto, Lissone). Vedi anche _UNSUPPORTED_PROVINCES.
     "monza e della brianza": "milano",
@@ -601,10 +601,10 @@ _CATASTAL_PROVINCE_ALIASES = {
 # Chiavi normalizzate con ``_normalize_for_match``. Estendere se emergono
 # nuovi casi confermati sperimentalmente.
 _UNSUPPORTED_PROVINCES_SISTER = {
-    # Provincia Autonoma di Trento — Catasto Tavolare (Libro Fondiario)
+    # Provincia Autonoma di Trento - Catasto Tavolare (Libro Fondiario)
     "trento": "Provincia Autonoma di Trento: catasto gestito dal Sistema "
     "Tavolare (Libro Fondiario), non disponibile su SISTER.",
-    # Provincia Autonoma di Bolzano / Südtirol — Catasto Tavolare
+    # Provincia Autonoma di Bolzano / Südtirol - Catasto Tavolare
     "bolzano": "Provincia Autonoma di Bolzano: catasto gestito dal Sistema "
     "Tavolare (Libro Fondiario), non disponibile su SISTER.",
     "bolzano bozen": "Provincia Autonoma di Bolzano: catasto gestito dal "
@@ -672,7 +672,7 @@ async def _wait_for_ready(page, selector: str, timeout_ms: int = 15000, label: s
     Sostituisce il pattern ``wait_for_load_state("domcontentloaded")`` quando
     il vero "ready" del passo è la presenza di un elemento target specifico
     (es. la prossima ``<select>`` del form, il link "Immobile"). Ritorna
-    appena il selector è ATTACHED nel DOM (non richiede visibility) — questo
+    appena il selector è ATTACHED nel DOM (non richiede visibility) - questo
     è sufficiente per gli step successivi (``select_option``, ``click``,
     ``page.evaluate`` per estrarre option) che fanno auto-wait di visibility
     se serve, e copre i casi in cui SISTER nasconde temporaneamente l'elemento
@@ -840,7 +840,7 @@ async def find_option_by_codice_belfiore(
     forma ``CODICEBELFIORE#NOME#0#0`` (es. ``A737#BELFIORE#0#0``,
     ``H501#ROMA#0#0``). Quando il consumer conosce il codice belfiore catastale
     (es. da ``parcels.administrativeunit``) può evitare il match stringa sul
-    nome del comune — più robusto perché il codice belfiore è una chiave
+    nome del comune - più robusto perché il codice belfiore è una chiave
     catastale stabile, mentre i nomi soffrono di varianti ortografiche
     (apostrofi tipografici, accenti, suffissi).
 
@@ -920,7 +920,7 @@ async def find_best_option_match(page, selector, search_text, provincia_value: O
             print(f"[MATCH] CACHE hit comune '{search_text}' -> '{v}'")
             return v
     else:
-        # Selector non standard (es. select[name='sezione']) — solo evaluate, no cache
+        # Selector non standard (es. select[name='sezione']) - solo evaluate, no cache
         items = await _collect_options_fast(page, selector)
 
     best_match = None
@@ -1318,7 +1318,7 @@ async def run_visura(
         }
 
     # STEP 5: Estrai intestati (solo quando extract_intestati=True)
-    # Usato da /visura/intestati per terreni — tipicamente 1-2 risultati
+    # Usato da /visura/intestati per terreni - tipicamente 1-2 risultati
     print("[VISURA] Estraendo intestati...")
     intestati = []
 

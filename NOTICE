@@ -29,7 +29,7 @@ Anyone who forked the repository BEFORE commit c8126e8 holds a perpetual
 GPL-3.0 grant on that snapshot. Anyone who forked or pulled changes AFTER
 commit c8126e8 is bound by AGPL-3.0-only.
 
-NETWORK USE — AGPL §13 NOTICE FOR DEPLOYERS
+NETWORK USE - AGPL §13 NOTICE FOR DEPLOYERS
 -------------------------------------------
 
 Visura API is licensed under AGPL-3.0. Section 13 of AGPL-3.0 ("Remote
@@ -38,7 +38,7 @@ specific obligations on anyone who runs a modified version of this software
 on a server and makes it accessible to users over a network.
 
 If you deploy a modified version of Visura API (or a derivative work that
-incorporates Visura API) as a network-accessible service — including but
+incorporates Visura API) as a network-accessible service - including but
 not limited to:
 
   * a SaaS or B2B API platform
@@ -83,9 +83,9 @@ terminates your rights under AGPL §8.
 COMMERCIAL / DUAL LICENSING
 ---------------------------
 
-If the terms of the AGPL-3.0 do not suit your use case — for example, if
+If the terms of the AGPL-3.0 do not suit your use case - for example, if
 you wish to integrate Visura API into a proprietary SaaS without releasing
-your private orchestrators, authentication modules, or business logic —
+your private orchestrators, authentication modules, or business logic -
 a commercial license is available from the copyright holder.
 
 See COMMERCIAL-LICENSE.md or contact:
@@ -105,4 +105,4 @@ in each source file, as required by AGPL §4 and §5.
 When publishing benchmarks, papers, blog posts, or marketing materials
 that mention or compare Visura API, please attribute it as:
 
-    "Visura API — zornade (https://github.com/zornade/visura-api)"
+    "Visura API - zornade (https://github.com/zornade/visura-api)"
