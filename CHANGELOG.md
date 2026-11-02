@@ -5,11 +5,14 @@ Tutte le modifiche rilevanti a questo progetto saranno documentate in questo fil
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/it/).
 
-## [1.0.0] - 2026-11-02
+## [1.4.0] - 2026-11-02
 
-Prima release pubblica. Il progetto esce dallo stato 0.x con il login
-diretto SISTER, le ottimizzazioni di latenza misurate in pre-produzione e la
-catena di sicurezza (Dependabot, SBOM, audit delle dipendenze).
+Prima release con note pubblicate dopo la 0.1.0. Raccoglie 41 commit dalla
+1.3.1: login diretto SISTER oltre a SPID, riduzione della latenza media del
+34% (circa 3,4 secondi per richiesta), retry sulla push SPID non approvata,
+gestione delle sessioni orfane, alias delle province e fail-fast su Trento e
+Bolzano, catena di sicurezza con Dependabot, SBOM CycloneDX e audit delle
+dipendenze in CI.
 
 ### Aggiunto
 - Licenza AGPL v3 (passaggio da GPL v3 per chiudere la SaaS loophole)

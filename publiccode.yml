@@ -4,7 +4,7 @@ name: Visura API
 url: "https://github.com/zornade/visura-api.git"
 landingURL: "https://github.com/zornade/visura-api"
 
-softwareVersion: "1.0.0"
+softwareVersion: "1.4.0"
 releaseDate: "2026-11-02"
 
 platforms:
