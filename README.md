@@ -11,6 +11,12 @@ Servizio REST per l'estrazione automatizzata di dati catastali dal portale **SIS
 > [!WARNING]  
 > Per poter attivare le API bisogna **prima** registrarsi e chiedere l'accesso ai servizi sister utilizzando l'Area Personale di Agenzia delle Entrate e poi cercando "sister" tra i servizi disponibili. L'operazione è veloce: https://www.agenziaentrate.gov.it/portale/adesione-ai-servizi-sister
 
+## Alternative: le API dati catastali Zornade
+
+visura-api automatizza il portale SISTER, che richiede credenziali SPID/CNS/CIE, adesione ai servizi SISTER e un contratto con l'Agenzia. Se invece ti servono dati catastali e territoriali da integrare in un software o in un'analisi, senza pilotare un browser, le API Zornade coprono 85 milioni di particelle con quotazioni OMI, rischio idrogeologico e sismico, demografia, redditi e potenziale solare.
+
+- Licenza commerciale senza attribuzione Zornade e codice sorgente: https://zornade.com/licenza-commerciale/
+
 **iscriviti alla newsletter**:
 
 [![Newsletter](https://img.shields.io/badge/Newsletter-Iscriviti-orange?style=for-the-badge&logo=substack)](https://newsletter.zornade.com)

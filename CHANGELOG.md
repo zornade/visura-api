@@ -10,6 +10,12 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 ### Aggiunto
 - Licenza AGPL v3 (passaggio da GPL v3 per chiudere la SaaS loophole)
 - File CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md
+- Dependabot settimanale sulle dipendenze Python e mensile sulle GitHub Actions,
+  con patch e minor raggruppate in un'unica pull request
+- Workflow SBOM (CycloneDX) su push in `main` e su tag `v*`, con l'inventario
+  delle dipendenze conservato come artefatto
+- Nel README, il rimando alle API dati catastali Zornade per chi non vuole
+  pilotare SISTER e non ha un contratto con l'Agenzia
 - Configurazione CI con GitHub Actions
 - File pyproject.toml con metadati del progetto
 - File .env.example completo con tutte le variabili
@@ -34,5 +40,8 @@ e questo progetto aderisce al [Versionamento Semantico](https://semver.org/lang/
 
 ### Corretto
 - Rimosso `sys.exit(0)` duplicato nel gestore dei segnali
+- Indirizzo dedicato `sicurezza@zornade.com` in SECURITY.md, al posto del
+  profilo GitHub, e periodo di supporto di cinque anni allineato al Cyber
+  Resilience Act
 - **Stabilità Docker**: rimosso flag Chromium `--single-process` (incompatibile con Docker, causava crash sporadici al re-init) e aggiunta chiusura esplicita dell'istanza Playwright precedente in `BrowserManager.initialize()` e `BrowserManager.close()` per evitare processi Chromium orfani durante session recovery e shutdown
 - **Robustezza `PageLogger`**: la creazione della directory di logging ora è tollerante ai filesystem read-only o privi di permessi di scrittura. La risoluzione avviene in cascata (`PAGES_LOG_DIR` env → variabile di modulo `PAGES_LOG_DIR` → fallback `/tmp/visura-api/logs/pages` → disabilitazione silenziosa), evitando crash all'avvio in container con application directory in sola lettura o senza volume montato.
