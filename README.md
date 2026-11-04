@@ -17,7 +17,19 @@ Servizio REST per l'estrazione automatizzata di dati catastali dal portale **SIS
 
 visura-api automatizza il portale SISTER, che richiede credenziali SPID/CNS/CIE, adesione ai servizi SISTER e un contratto con l'Agenzia. Se invece ti servono dati catastali e territoriali da integrare in un software o in un'analisi, senza pilotare un browser, le API Zornade coprono 85 milioni di particelle con quotazioni OMI, rischio idrogeologico e sismico, demografia, redditi e potenziale solare.
 
-- Licenza commerciale senza attribuzione Zornade e codice sorgente: https://zornade.com/licenza-commerciale/
+Da qui le porte d'ingresso, in ordine di quanto sono vicine a questo repository:
+
+| Cosa ti serve | Dove |
+|---------------|------|
+| Questa integrazione raccontata lato prodotto, con costi e alternative | https://zornade.com/visura-api/ |
+| Dati catastali via API REST, senza pilotare un browser | https://zornade.com/api-particelle-catastali/ |
+| Server MCP per ChatGPT, Claude, Cursor e VS Code (sei strumenti in sola lettura) | https://zornade.com/mcp/ |
+| Estrazione in blocco di particelle e dataset per provincia o comune | https://zornade.com/estrazioni-dati-catastali/ |
+| Documenti catastali in white label per il tuo prodotto | https://zornade.com/documenti/ |
+| Licenza commerciale senza attribuzione Zornade, con il codice sorgente | https://zornade.com/licenza-commerciale/ |
+| Chiave API gratuita (10.000 richieste all'ora) e documentazione | https://app.zornade.com/api |
+
+Il server MCP è a sua volta open source, con lo stesso modello di licenza: https://github.com/zornade/zornade-mcp
 
 **iscriviti alla newsletter**:
 
