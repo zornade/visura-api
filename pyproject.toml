@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "visura-api"
@@ -50,6 +50,13 @@ Homepage = "https://github.com/zornade/visura-api"
 Repository = "https://github.com/zornade/visura-api"
 Issues = "https://github.com/zornade/visura-api/issues"
 Changelog = "https://github.com/zornade/visura-api/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+# Layout piatto: due moduli alla radice, nessun package. Senza questa sezione
+# la discovery automatica di setuptools trova tests/, evidence/ e logs/ e
+# rifiuta la build.
+packages = []
+py-modules = ["main", "utils"]
 
 [tool.black]
 line-length = 120
