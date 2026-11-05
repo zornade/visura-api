@@ -1,4 +1,4 @@
-publiccodeYmlVersion: "0.4"
+publiccodeYmlVersion: "0"
 
 name: Visura API
 url: "https://github.com/zornade/visura-api.git"
@@ -21,8 +21,6 @@ developmentStatus: stable
 softwareType: "standalone/backend"
 
 intendedAudience:
-  scope:
-    - government
   countries:
     - IT
 
