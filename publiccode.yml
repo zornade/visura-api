@@ -2,7 +2,10 @@ publiccodeYmlVersion: "0"
 
 name: Visura API
 url: "https://github.com/zornade/visura-api.git"
-landingURL: "https://github.com/zornade/visura-api"
+# 17/11/2026 — puntava al repository. Nel Catalogo del riuso il campo landingURL e' il
+# link che una PA clicca per capire cosa compra: il repo non lo spiega, la pagina del
+# servizio si'. Verificata 200 su https://zornade.com/visura-api.
+landingURL: "https://zornade.com/visura-api"
 
 softwareVersion: "1.4.0"
 releaseDate: "2026-11-02"

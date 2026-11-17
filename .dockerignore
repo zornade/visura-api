@@ -1,0 +1,15 @@
+# Contesto di build minimo.
+# Senza questo file `COPY . .` porta dentro l'immagine i log delle sessioni (117 MB),
+# la cache di Python e la storia git: solo peso, niente che serva a runtime.
+.git
+.gitignore
+logs/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+evidence/
